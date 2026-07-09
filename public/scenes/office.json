@@ -1,143 +1,1005 @@
 {
-  "version": 0,
+  "version": 1,
   "name": "워크그리드 성수 (공유오피스 데모 · 15m×10m)",
-  "wallHeight": 250,
-  "spawn": { "x": 770, "z": 930, "yawDeg": 0 },
-  "walls": [
+  "levels": [
     {
-      "from": { "x": 0, "z": 0 }, "to": { "x": 1500, "z": 0 }, "thickness": 15,
-      "openings": [
-        { "type": "window", "offset": 300, "width": 200, "height": 130, "sillHeight": 90 },
-        { "type": "window", "offset": 650, "width": 200, "height": 130, "sillHeight": 90 },
-        { "type": "window", "offset": 1150, "width": 250, "height": 130, "sillHeight": 90 }
+      "id": "1f",
+      "name": "1층",
+      "wallHeight": 250,
+      "spawn": {
+        "x": 770,
+        "z": 930,
+        "yawDeg": 0
+      },
+      "walls": [
+        {
+          "from": {
+            "x": 0,
+            "z": 0
+          },
+          "to": {
+            "x": 1500,
+            "z": 0
+          },
+          "thickness": 15,
+          "openings": [
+            {
+              "type": "window",
+              "offset": 300,
+              "width": 200,
+              "height": 130,
+              "sillHeight": 90
+            },
+            {
+              "type": "window",
+              "offset": 650,
+              "width": 200,
+              "height": 130,
+              "sillHeight": 90
+            },
+            {
+              "type": "window",
+              "offset": 1150,
+              "width": 250,
+              "height": 130,
+              "sillHeight": 90
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 1500,
+            "z": 0
+          },
+          "to": {
+            "x": 1500,
+            "z": 1000
+          },
+          "thickness": 15,
+          "openings": [
+            {
+              "type": "window",
+              "offset": 150,
+              "width": 200,
+              "height": 130,
+              "sillHeight": 90
+            },
+            {
+              "type": "window",
+              "offset": 550,
+              "width": 200,
+              "height": 130,
+              "sillHeight": 90
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 0,
+            "z": 1000
+          },
+          "to": {
+            "x": 1500,
+            "z": 1000
+          },
+          "thickness": 15,
+          "openings": [
+            {
+              "type": "window",
+              "offset": 250,
+              "width": 200,
+              "height": 130,
+              "sillHeight": 90
+            },
+            {
+              "type": "door",
+              "offset": 700,
+              "width": 140,
+              "height": 210
+            },
+            {
+              "type": "window",
+              "offset": 1150,
+              "width": 200,
+              "height": 130,
+              "sillHeight": 90
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 0,
+            "z": 0
+          },
+          "to": {
+            "x": 0,
+            "z": 1000
+          },
+          "thickness": 15,
+          "openings": [
+            {
+              "type": "window",
+              "offset": 550,
+              "width": 180,
+              "height": 130,
+              "sillHeight": 90
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 1050,
+            "z": 0
+          },
+          "to": {
+            "x": 1050,
+            "z": 450
+          },
+          "thickness": 10,
+          "openings": [
+            {
+              "type": "window",
+              "offset": 100,
+              "width": 250,
+              "height": 140,
+              "sillHeight": 90
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 1050,
+            "z": 450
+          },
+          "to": {
+            "x": 1500,
+            "z": 450
+          },
+          "thickness": 10,
+          "openings": [
+            {
+              "type": "door",
+              "offset": 120,
+              "width": 100,
+              "height": 210
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 250,
+            "z": 0
+          },
+          "to": {
+            "x": 250,
+            "z": 220
+          },
+          "thickness": 10,
+          "openings": [
+            {
+              "type": "door",
+              "offset": 60,
+              "width": 90,
+              "height": 210
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 0,
+            "z": 220
+          },
+          "to": {
+            "x": 250,
+            "z": 220
+          },
+          "thickness": 10
+        },
+        {
+          "from": {
+            "x": 250,
+            "z": 220
+          },
+          "to": {
+            "x": 250,
+            "z": 440
+          },
+          "thickness": 10,
+          "openings": [
+            {
+              "type": "door",
+              "offset": 60,
+              "width": 90,
+              "height": 210
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 0,
+            "z": 440
+          },
+          "to": {
+            "x": 250,
+            "z": 440
+          },
+          "thickness": 10
+        }
+      ],
+      "floors": [
+        {
+          "x": 0,
+          "z": 0,
+          "w": 250,
+          "d": 440,
+          "material": "carpet"
+        },
+        {
+          "x": 1050,
+          "z": 0,
+          "w": 450,
+          "d": 450,
+          "material": "carpet"
+        },
+        {
+          "x": 250,
+          "z": 0,
+          "w": 800,
+          "d": 650,
+          "material": "tile"
+        },
+        {
+          "x": 0,
+          "z": 440,
+          "w": 250,
+          "d": 560,
+          "material": "tile"
+        },
+        {
+          "x": 250,
+          "z": 650,
+          "w": 450,
+          "d": 350,
+          "material": "wood"
+        },
+        {
+          "x": 700,
+          "z": 650,
+          "w": 350,
+          "d": 350,
+          "material": "tile"
+        },
+        {
+          "x": 1050,
+          "z": 450,
+          "w": 450,
+          "d": 550,
+          "material": "wood"
+        }
+      ],
+      "zones": [
+        {
+          "id": "zone-construction",
+          "points": [
+            {
+              "x": 15,
+              "z": 700
+            },
+            {
+              "x": 260,
+              "z": 700
+            },
+            {
+              "x": 260,
+              "z": 900
+            },
+            {
+              "x": 150,
+              "z": 900
+            },
+            {
+              "x": 150,
+              "z": 990
+            },
+            {
+              "x": 15,
+              "z": 990
+            }
+          ]
+        }
+      ],
+      "lights": [
+        {
+          "x": 1160,
+          "z": 215
+        },
+        {
+          "x": 1380,
+          "z": 215
+        },
+        {
+          "x": 125,
+          "z": 110
+        },
+        {
+          "x": 125,
+          "z": 330
+        },
+        {
+          "x": 525,
+          "z": 235,
+          "w": 150
+        },
+        {
+          "x": 675,
+          "z": 435,
+          "w": 150
+        },
+        {
+          "x": 460,
+          "z": 800
+        },
+        {
+          "x": 1280,
+          "z": 870
+        },
+        {
+          "x": 930,
+          "z": 870
+        }
+      ],
+      "items": [
+        {
+          "id": "partition-a1",
+          "catalogId": "partition",
+          "position": {
+            "x": 450,
+            "z": 155
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "partition-a2",
+          "catalogId": "partition",
+          "position": {
+            "x": 600,
+            "z": 155
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "partition-a3",
+          "catalogId": "partition",
+          "position": {
+            "x": 750,
+            "z": 155
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "desk-a1",
+          "catalogId": "desk",
+          "position": {
+            "x": 450,
+            "z": 200
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "desk-a2",
+          "catalogId": "desk",
+          "position": {
+            "x": 600,
+            "z": 200
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "desk-a3",
+          "catalogId": "desk",
+          "position": {
+            "x": 750,
+            "z": 200
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "chair-a1",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 450,
+            "z": 268
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "chair-a2",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 600,
+            "z": 268
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "chair-a3",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 750,
+            "z": 268
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "desk-b1",
+          "catalogId": "desk",
+          "position": {
+            "x": 450,
+            "z": 470
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "desk-b2",
+          "catalogId": "desk",
+          "position": {
+            "x": 600,
+            "z": 470
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "desk-b3",
+          "catalogId": "desk",
+          "position": {
+            "x": 750,
+            "z": 470
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "chair-b1",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 450,
+            "z": 402
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "chair-b2",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 600,
+            "z": 402
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "chair-b3",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 750,
+            "z": 402
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "partition-b1",
+          "catalogId": "partition",
+          "position": {
+            "x": 450,
+            "z": 515
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "partition-b2",
+          "catalogId": "partition",
+          "position": {
+            "x": 600,
+            "z": 515
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "partition-b3",
+          "catalogId": "partition",
+          "position": {
+            "x": 750,
+            "z": 515
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "whiteboard-hd",
+          "catalogId": "whiteboard",
+          "position": {
+            "x": 560,
+            "z": 30
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "plant-hd",
+          "catalogId": "plant",
+          "position": {
+            "x": 1000,
+            "z": 80
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "mtable-1",
+          "catalogId": "meeting_table",
+          "position": {
+            "x": 1270,
+            "z": 215
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "mchair-1",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 1160,
+            "z": 105
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "mchair-2",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 1270,
+            "z": 105
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "mchair-3",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 1380,
+            "z": 105
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "mchair-4",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 1160,
+            "z": 325
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "mchair-5",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 1270,
+            "z": 325
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "mchair-6",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 1380,
+            "z": 325
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "whiteboard-mr",
+          "catalogId": "whiteboard",
+          "position": {
+            "x": 1480,
+            "z": 215
+          },
+          "rotationY": 90
+        },
+        {
+          "id": "plant-mr",
+          "catalogId": "plant",
+          "position": {
+            "x": 1080,
+            "z": 415
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "fdesk-1",
+          "catalogId": "desk",
+          "position": {
+            "x": 50,
+            "z": 110
+          },
+          "rotationY": -90
+        },
+        {
+          "id": "fchair-1",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 120,
+            "z": 110
+          },
+          "rotationY": 90
+        },
+        {
+          "id": "flamp-1",
+          "catalogId": "floor_lamp",
+          "position": {
+            "x": 215,
+            "z": 40
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "fdesk-2",
+          "catalogId": "desk",
+          "position": {
+            "x": 50,
+            "z": 330
+          },
+          "rotationY": -90
+        },
+        {
+          "id": "fchair-2",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 120,
+            "z": 330
+          },
+          "rotationY": 90
+        },
+        {
+          "id": "plant-f2",
+          "catalogId": "plant",
+          "position": {
+            "x": 215,
+            "z": 410
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "sofa-l",
+          "catalogId": "sofa",
+          "position": {
+            "x": 460,
+            "z": 730
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "ctable-l",
+          "catalogId": "coffee_table",
+          "position": {
+            "x": 460,
+            "z": 850
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "armchair-l",
+          "catalogId": "armchair",
+          "position": {
+            "x": 650,
+            "z": 850
+          },
+          "rotationY": 90
+        },
+        {
+          "id": "lamp-l1",
+          "catalogId": "floor_lamp",
+          "position": {
+            "x": 330,
+            "z": 690
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "bookshelf-l",
+          "catalogId": "bookshelf",
+          "position": {
+            "x": 560,
+            "z": 975
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "plant-l",
+          "catalogId": "plant",
+          "position": {
+            "x": 680,
+            "z": 960
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "rdesk-1",
+          "catalogId": "desk",
+          "position": {
+            "x": 930,
+            "z": 880
+          },
+          "rotationY": 90
+        },
+        {
+          "id": "rchair-1",
+          "catalogId": "office_chair",
+          "position": {
+            "x": 1000,
+            "z": 880
+          },
+          "rotationY": 90
+        },
+        {
+          "id": "plant-r",
+          "catalogId": "plant",
+          "position": {
+            "x": 1030,
+            "z": 690
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "locker-1",
+          "catalogId": "locker",
+          "position": {
+            "x": 1085,
+            "z": 530
+          },
+          "rotationY": -90
+        },
+        {
+          "id": "locker-2",
+          "catalogId": "locker",
+          "position": {
+            "x": 1085,
+            "z": 660
+          },
+          "rotationY": -90
+        },
+        {
+          "id": "pcounter-1",
+          "catalogId": "pantry_counter",
+          "position": {
+            "x": 1280,
+            "z": 935
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "bstool-1",
+          "catalogId": "bar_stool",
+          "position": {
+            "x": 1210,
+            "z": 850
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "bstool-2",
+          "catalogId": "bar_stool",
+          "position": {
+            "x": 1280,
+            "z": 850
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "bstool-3",
+          "catalogId": "bar_stool",
+          "position": {
+            "x": 1350,
+            "z": 850
+          },
+          "rotationY": 180
+        },
+        {
+          "id": "plant-p",
+          "catalogId": "plant",
+          "position": {
+            "x": 1470,
+            "z": 700
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "lamp-p",
+          "catalogId": "floor_lamp",
+          "position": {
+            "x": 1080,
+            "z": 960
+          },
+          "rotationY": 0
+        }
       ]
     },
     {
-      "from": { "x": 1500, "z": 0 }, "to": { "x": 1500, "z": 1000 }, "thickness": 15,
-      "openings": [
-        { "type": "window", "offset": 150, "width": 200, "height": 130, "sillHeight": 90 },
-        { "type": "window", "offset": 550, "width": 200, "height": 130, "sillHeight": 90 }
+      "id": "2f",
+      "name": "2층",
+      "restricted": true,
+      "wallHeight": 250,
+      "spawn": {
+        "x": 770,
+        "z": 930,
+        "yawDeg": 0
+      },
+      "walls": [
+        {
+          "from": {
+            "x": 0,
+            "z": 0
+          },
+          "to": {
+            "x": 1500,
+            "z": 0
+          },
+          "thickness": 15,
+          "openings": [
+            {
+              "type": "window",
+              "offset": 300,
+              "width": 200,
+              "height": 130,
+              "sillHeight": 90
+            },
+            {
+              "type": "window",
+              "offset": 900,
+              "width": 200,
+              "height": 130,
+              "sillHeight": 90
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 1500,
+            "z": 0
+          },
+          "to": {
+            "x": 1500,
+            "z": 1000
+          },
+          "thickness": 15,
+          "openings": [
+            {
+              "type": "window",
+              "offset": 400,
+              "width": 200,
+              "height": 130,
+              "sillHeight": 90
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 0,
+            "z": 1000
+          },
+          "to": {
+            "x": 1500,
+            "z": 1000
+          },
+          "thickness": 15,
+          "openings": [
+            {
+              "type": "door",
+              "offset": 700,
+              "width": 140,
+              "height": 210
+            }
+          ]
+        },
+        {
+          "from": {
+            "x": 0,
+            "z": 0
+          },
+          "to": {
+            "x": 0,
+            "z": 1000
+          },
+          "thickness": 15
+        },
+        {
+          "from": {
+            "x": 600,
+            "z": 0
+          },
+          "to": {
+            "x": 600,
+            "z": 400
+          },
+          "thickness": 10,
+          "openings": [
+            {
+              "type": "door",
+              "offset": 280,
+              "width": 100,
+              "height": 210
+            }
+          ]
+        }
+      ],
+      "floors": [
+        {
+          "x": 0,
+          "z": 0,
+          "w": 1500,
+          "d": 1000,
+          "material": "tile"
+        }
+      ],
+      "zones": [],
+      "lights": [
+        {
+          "x": 750,
+          "z": 500,
+          "w": 150
+        }
+      ],
+      "items": [
+        {
+          "id": "2f-locker-1",
+          "catalogId": "locker",
+          "position": {
+            "x": 200,
+            "z": 500
+          },
+          "rotationY": -90
+        },
+        {
+          "id": "2f-locker-2",
+          "catalogId": "locker",
+          "position": {
+            "x": 200,
+            "z": 650
+          },
+          "rotationY": -90
+        },
+        {
+          "id": "2f-part-1",
+          "catalogId": "partition",
+          "position": {
+            "x": 800,
+            "z": 300
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "2f-part-2",
+          "catalogId": "partition",
+          "position": {
+            "x": 960,
+            "z": 300
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "2f-desk-1",
+          "catalogId": "desk",
+          "position": {
+            "x": 880,
+            "z": 600
+          },
+          "rotationY": 0
+        },
+        {
+          "id": "2f-plant-1",
+          "catalogId": "plant",
+          "position": {
+            "x": 1450,
+            "z": 60
+          },
+          "rotationY": 0
+        }
       ]
-    },
-    {
-      "from": { "x": 0, "z": 1000 }, "to": { "x": 1500, "z": 1000 }, "thickness": 15,
-      "openings": [
-        { "type": "window", "offset": 250, "width": 200, "height": 130, "sillHeight": 90 },
-        { "type": "door", "offset": 700, "width": 140, "height": 210 },
-        { "type": "window", "offset": 1150, "width": 200, "height": 130, "sillHeight": 90 }
-      ]
-    },
-    {
-      "from": { "x": 0, "z": 0 }, "to": { "x": 0, "z": 1000 }, "thickness": 15,
-      "openings": [
-        { "type": "window", "offset": 550, "width": 180, "height": 130, "sillHeight": 90 }
-      ]
-    },
-    {
-      "from": { "x": 1050, "z": 0 }, "to": { "x": 1050, "z": 450 }, "thickness": 10,
-      "openings": [
-        { "type": "window", "offset": 100, "width": 250, "height": 140, "sillHeight": 90 }
-      ]
-    },
-    {
-      "from": { "x": 1050, "z": 450 }, "to": { "x": 1500, "z": 450 }, "thickness": 10,
-      "openings": [
-        { "type": "door", "offset": 120, "width": 100, "height": 210 }
-      ]
-    },
-    {
-      "from": { "x": 250, "z": 0 }, "to": { "x": 250, "z": 220 }, "thickness": 10,
-      "openings": [
-        { "type": "door", "offset": 60, "width": 90, "height": 210 }
-      ]
-    },
-    { "from": { "x": 0, "z": 220 }, "to": { "x": 250, "z": 220 }, "thickness": 10 },
-    {
-      "from": { "x": 250, "z": 220 }, "to": { "x": 250, "z": 440 }, "thickness": 10,
-      "openings": [
-        { "type": "door", "offset": 60, "width": 90, "height": 210 }
-      ]
-    },
-    { "from": { "x": 0, "z": 440 }, "to": { "x": 250, "z": 440 }, "thickness": 10 }
-  ],
-  "floors": [
-    { "x": 0,    "z": 0,   "w": 250, "d": 440, "material": "carpet" },
-    { "x": 1050, "z": 0,   "w": 450, "d": 450, "material": "carpet" },
-    { "x": 250,  "z": 0,   "w": 800, "d": 650, "material": "tile" },
-    { "x": 0,    "z": 440, "w": 250, "d": 560, "material": "tile" },
-    { "x": 250,  "z": 650, "w": 450, "d": 350, "material": "wood" },
-    { "x": 700,  "z": 650, "w": 350, "d": 350, "material": "tile" },
-    { "x": 1050, "z": 450, "w": 450, "d": 550, "material": "wood" }
-  ],
-  "zones": [
-    { "id": "zone-construction", "points": [
-      { "x": 15, "z": 700 }, { "x": 260, "z": 700 }, { "x": 260, "z": 900 },
-      { "x": 150, "z": 900 }, { "x": 150, "z": 990 }, { "x": 15, "z": 990 }
-    ] }
-  ],
-  "lights": [
-    { "x": 1160, "z": 215 }, { "x": 1380, "z": 215 },
-    { "x": 125,  "z": 110 }, { "x": 125,  "z": 330 },
-    { "x": 525,  "z": 235, "w": 150 }, { "x": 675, "z": 435, "w": 150 },
-    { "x": 460,  "z": 800 }, { "x": 1280, "z": 870 }, { "x": 930, "z": 870 }
-  ],
-  "items": [
-    { "id": "partition-a1", "catalogId": "partition",    "position": { "x": 450,  "z": 155 }, "rotationY": 0 },
-    { "id": "partition-a2", "catalogId": "partition",    "position": { "x": 600,  "z": 155 }, "rotationY": 0 },
-    { "id": "partition-a3", "catalogId": "partition",    "position": { "x": 750,  "z": 155 }, "rotationY": 0 },
-    { "id": "desk-a1",      "catalogId": "desk",         "position": { "x": 450,  "z": 200 }, "rotationY": 0 },
-    { "id": "desk-a2",      "catalogId": "desk",         "position": { "x": 600,  "z": 200 }, "rotationY": 0 },
-    { "id": "desk-a3",      "catalogId": "desk",         "position": { "x": 750,  "z": 200 }, "rotationY": 0 },
-    { "id": "chair-a1",     "catalogId": "office_chair", "position": { "x": 450,  "z": 268 }, "rotationY": 0 },
-    { "id": "chair-a2",     "catalogId": "office_chair", "position": { "x": 600,  "z": 268 }, "rotationY": 0 },
-    { "id": "chair-a3",     "catalogId": "office_chair", "position": { "x": 750,  "z": 268 }, "rotationY": 0 },
-    { "id": "desk-b1",      "catalogId": "desk",         "position": { "x": 450,  "z": 470 }, "rotationY": 180 },
-    { "id": "desk-b2",      "catalogId": "desk",         "position": { "x": 600,  "z": 470 }, "rotationY": 180 },
-    { "id": "desk-b3",      "catalogId": "desk",         "position": { "x": 750,  "z": 470 }, "rotationY": 180 },
-    { "id": "chair-b1",     "catalogId": "office_chair", "position": { "x": 450,  "z": 402 }, "rotationY": 180 },
-    { "id": "chair-b2",     "catalogId": "office_chair", "position": { "x": 600,  "z": 402 }, "rotationY": 180 },
-    { "id": "chair-b3",     "catalogId": "office_chair", "position": { "x": 750,  "z": 402 }, "rotationY": 180 },
-    { "id": "partition-b1", "catalogId": "partition",    "position": { "x": 450,  "z": 515 }, "rotationY": 0 },
-    { "id": "partition-b2", "catalogId": "partition",    "position": { "x": 600,  "z": 515 }, "rotationY": 0 },
-    { "id": "partition-b3", "catalogId": "partition",    "position": { "x": 750,  "z": 515 }, "rotationY": 0 },
-    { "id": "whiteboard-hd","catalogId": "whiteboard",   "position": { "x": 560,  "z": 30 },  "rotationY": 180 },
-    { "id": "plant-hd",     "catalogId": "plant",        "position": { "x": 1000, "z": 80 },  "rotationY": 0 },
-
-    { "id": "mtable-1",     "catalogId": "meeting_table","position": { "x": 1270, "z": 215 }, "rotationY": 0 },
-    { "id": "mchair-1",     "catalogId": "office_chair", "position": { "x": 1160, "z": 105 }, "rotationY": 180 },
-    { "id": "mchair-2",     "catalogId": "office_chair", "position": { "x": 1270, "z": 105 }, "rotationY": 180 },
-    { "id": "mchair-3",     "catalogId": "office_chair", "position": { "x": 1380, "z": 105 }, "rotationY": 180 },
-    { "id": "mchair-4",     "catalogId": "office_chair", "position": { "x": 1160, "z": 325 }, "rotationY": 0 },
-    { "id": "mchair-5",     "catalogId": "office_chair", "position": { "x": 1270, "z": 325 }, "rotationY": 0 },
-    { "id": "mchair-6",     "catalogId": "office_chair", "position": { "x": 1380, "z": 325 }, "rotationY": 0 },
-    { "id": "whiteboard-mr","catalogId": "whiteboard",   "position": { "x": 1480, "z": 215 }, "rotationY": 90 },
-    { "id": "plant-mr",     "catalogId": "plant",        "position": { "x": 1080, "z": 415 }, "rotationY": 0 },
-
-    { "id": "fdesk-1",      "catalogId": "desk",         "position": { "x": 50,   "z": 110 }, "rotationY": -90 },
-    { "id": "fchair-1",     "catalogId": "office_chair", "position": { "x": 120,  "z": 110 }, "rotationY": 90 },
-    { "id": "flamp-1",      "catalogId": "floor_lamp",   "position": { "x": 215,  "z": 40 },  "rotationY": 0 },
-    { "id": "fdesk-2",      "catalogId": "desk",         "position": { "x": 50,   "z": 330 }, "rotationY": -90 },
-    { "id": "fchair-2",     "catalogId": "office_chair", "position": { "x": 120,  "z": 330 }, "rotationY": 90 },
-    { "id": "plant-f2",     "catalogId": "plant",        "position": { "x": 215,  "z": 410 }, "rotationY": 0 },
-
-    { "id": "sofa-l",       "catalogId": "sofa",         "position": { "x": 460,  "z": 730 }, "rotationY": 180 },
-    { "id": "ctable-l",     "catalogId": "coffee_table", "position": { "x": 460,  "z": 850 }, "rotationY": 0 },
-    { "id": "armchair-l",   "catalogId": "armchair",     "position": { "x": 650,  "z": 850 }, "rotationY": 90 },
-    { "id": "lamp-l1",      "catalogId": "floor_lamp",   "position": { "x": 330,  "z": 690 }, "rotationY": 0 },
-    { "id": "bookshelf-l",  "catalogId": "bookshelf",    "position": { "x": 560,  "z": 975 }, "rotationY": 0 },
-    { "id": "plant-l",      "catalogId": "plant",        "position": { "x": 680,  "z": 960 }, "rotationY": 0 },
-
-    { "id": "rdesk-1",      "catalogId": "desk",         "position": { "x": 930,  "z": 880 }, "rotationY": 90 },
-    { "id": "rchair-1",     "catalogId": "office_chair", "position": { "x": 1000, "z": 880 }, "rotationY": 90 },
-    { "id": "plant-r",      "catalogId": "plant",        "position": { "x": 1030, "z": 690 }, "rotationY": 0 },
-
-    { "id": "locker-1",     "catalogId": "locker",       "position": { "x": 1085, "z": 530 }, "rotationY": -90 },
-    { "id": "locker-2",     "catalogId": "locker",       "position": { "x": 1085, "z": 660 }, "rotationY": -90 },
-    { "id": "pcounter-1",   "catalogId": "pantry_counter","position": { "x": 1280, "z": 935 }, "rotationY": 0 },
-    { "id": "bstool-1",     "catalogId": "bar_stool",    "position": { "x": 1210, "z": 850 }, "rotationY": 180 },
-    { "id": "bstool-2",     "catalogId": "bar_stool",    "position": { "x": 1280, "z": 850 }, "rotationY": 180 },
-    { "id": "bstool-3",     "catalogId": "bar_stool",    "position": { "x": 1350, "z": 850 }, "rotationY": 180 },
-    { "id": "plant-p",      "catalogId": "plant",        "position": { "x": 1470, "z": 700 }, "rotationY": 0 },
-    { "id": "lamp-p",       "catalogId": "floor_lamp",   "position": { "x": 1080, "z": 960 }, "rotationY": 0 }
+    }
   ]
 }

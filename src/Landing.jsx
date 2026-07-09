@@ -93,6 +93,7 @@ export function Landing() {
             <li><strong>캔버스 라이브러리 없는 SVG 에디터.</strong> 도면 좌표와 SVG 좌표를 1:1로 맞춰 변환 계층을 없앴습니다.</li>
             <li><strong>cm → m 좌표 변환은 단 한 곳.</strong> 2D와 3D의 좌표계 규칙을 문서(SCHEMA.md)로 먼저 정하고, 변환 코드를 한 지점에 강제해 거울상 버그를 원천 차단했습니다.</li>
             <li><strong>클릭 한 번으로 방을 감지하는 금지구역.</strong> 도면을 격자로 래스터화해 플러드필로 닫힌 영역을 찾고, 경계를 추적해 다각형으로 만듭니다. 고객 화면에선 금지구역이 그냥 벽처럼 보입니다.</li>
+            <li><strong>층 단위 공개 제어.</strong> 여러 층을 층 탭으로 편집하고, 비공개 층은 고객 투어에서 존재 자체가 드러나지 않습니다.</li>
             <li><strong>60fps 루프와 React 렌더 분리.</strong> 매 프레임 데이터는 mutable 스토어로, UI 갱신은 useSyncExternalStore로 필요할 때만.</li>
           </ul>
           <p className="landing-links">

@@ -7,7 +7,7 @@ import { zonePoints, zoneCentroid } from '../lib/zone.js'
 // 2D 탑뷰 도면 에디터. 도면 좌표(cm, +z=아래)가 SVG 좌표와 1:1 — 변환 없음.
 const SNAP = 5 // cm
 
-export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi, onEnter3D, onExport, onImport }) {
+export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, items, catalog, catalogApi, itemsApi, sceneApi, onEnter3D, onExport, onImport }) {
   const [tool, setTool] = useState('select') // 'select' | 'wall' | 'zone'
   const [selected, setSelected] = useState(null) // { kind: 'item'|'zone'|'wall', id }
   const [cursor, setCursor] = useState(null)     // 도면 좌표 (벽/구역 미리보기용)
@@ -16,6 +16,7 @@ export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi
   const [zoneMsg, setZoneMsg] = useState(null)
   const [importErr, setImportErr] = useState(null)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmLevelDel, setConfirmLevelDel] = useState(false)
   const svgRef = useRef(null)
   const fileRef = useRef(null)
   const imgRef = useRef(null)
@@ -267,10 +268,12 @@ export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi
   const selectedItemCat = selectedItem ? catalog.items[selectedItem.catalogId] : null
   const underlay = scene.underlay
 
+  const activeLv = levels[activeLevel]
+
   return (
     <div className="editor">
       <div className="editor-top">
-        <b>2D 도면 · {scene.name}</b>
+        <b>2D 도면 · {buildingName}</b>
         <div className="toolbar">
           <button className={tool === 'select' ? 'tool on' : 'tool'} onClick={() => setTool('select')}>선택</button>
           <button className={tool === 'wall' ? 'tool on' : 'tool'} onClick={() => { setTool('wall'); setSelected(null) }}>벽 그리기</button>
@@ -316,6 +319,40 @@ export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi
           </button>
           <button className="primary" onClick={onEnter3D}>▶ 3D로 체험 (Tab)</button>
         </div>
+      </div>
+
+      {/* 층 탭: 어드민은 전 층을 보고 편집하지만, 🔒 층은 고객 3D 투어에서 존재 자체가 숨겨진다 */}
+      <div className="editor-levels">
+        {levels.map((lv, i) => (
+          <button
+            key={lv.id}
+            className={i === activeLevel ? 'lvtab on' : 'lvtab'}
+            onClick={() => { levelsApi.setActive(i); setSelected(null); setWallStart(null); setZoneStart(null) }}
+          >
+            {lv.restricted ? '🔒 ' : ''}{lv.name}
+          </button>
+        ))}
+        <button className="lvtab lvadd" onClick={levelsApi.add}>+ 층 추가</button>
+        <span className="lv-spacer" />
+        <label className="lv-restrict" title="켜면 고객용 3D 투어에서 이 층이 목록에서 사라집니다">
+          <input
+            type="checkbox"
+            checked={!!activeLv?.restricted}
+            onChange={() => levelsApi.toggleRestricted(activeLevel)}
+          />
+          이 층 고객 비공개
+        </label>
+        {levels.length > 1 && (
+          <button
+            className={confirmLevelDel ? 'lvtab lvdanger' : 'lvtab'}
+            onClick={() => {
+              if (confirmLevelDel) { levelsApi.remove(activeLevel); setSelected(null); setConfirmLevelDel(false) }
+              else { setConfirmLevelDel(true); setTimeout(() => setConfirmLevelDel(false), 2500) }
+            }}
+          >
+            {confirmLevelDel ? '정말 삭제?' : '층 삭제'}
+          </button>
+        )}
       </div>
 
       <div className="editor-body">

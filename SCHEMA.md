@@ -1,7 +1,25 @@
-# 씬 JSON 스키마 v0 — 좌표계 규칙 (1일차 확정본)
+# 씬 JSON 스키마 — 좌표계 규칙 (1일차 확정본)
 
 > 이 문서가 이 프로젝트의 심장. 에디터·뷰어 어느 쪽도 이 규칙을 어기면 안 된다.
 > 2D↔3D 변환 코드는 `src/lib/units.js`의 `toWorld()` **한 곳에만** 존재한다.
+
+## v1 — 층(levels) 구조
+
+```jsonc
+{
+  "version": 1,
+  "name": "워크그리드 성수",     // 건물 이름
+  "levels": [                    // 층 배열 — 각 층은 아래 v0 씬 필드 전체를 가짐
+    { "id": "1f", "name": "1층", /* wallHeight·spawn·walls·floors·zones·lights·items */ },
+    { "id": "2f", "name": "2층", "restricted": true, /* ... */ }
+  ],
+  "customCatalog": { }           // 커스텀 가구 타입 (건물 공용)
+}
+```
+
+- **`restricted: true` = 층 단위 고객 비공개.** 고객용 3D 투어(`?viewer=1`)에서 그 층은 층 전환 UI에 아예 나타나지 않는다. 공개 층이 1개뿐이면 전환 UI 자체가 사라져, 고객은 비공개 층의 존재를 알 수 없다. 어드민 미리보기(Tab)에선 🔒 표시와 함께 접근 가능.
+- 층 이동은 계단 시뮬레이션 없이 층 전환 = 그 층의 spawn으로 이동.
+- **v0(단층, levels 없음) 파일도 그대로 로드된다** — 로더가 "1층짜리 건물"로 정규화(`App.jsx normalizeDoc` 한 곳).
 
 ## 좌표계
 

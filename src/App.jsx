@@ -21,9 +21,42 @@ export default function App() {
   return <Viewer />
 }
 
+// 씬 JSON 정규화: v0(단층) → v1(levels[]) — 하위호환은 여기 한 곳에서 흡수한다
+function normalizeDoc(j) {
+  const { customCatalog, ...rest } = j
+  if (Array.isArray(j.levels)) {
+    return {
+      name: j.name ?? '이름 없는 건물',
+      customCatalog: customCatalog ?? {},
+      levels: j.levels.map((lv, i) => {
+        const { items, id, name, restricted, ...sceneFields } = lv
+        return {
+          id: id ?? `lv${i}`,
+          name: name ?? `${i + 1}층`,
+          restricted: !!restricted,
+          scene: sceneFields,
+          items: items ?? [],
+        }
+      }),
+    }
+  }
+  const { items, name, version, ...sceneFields } = rest
+  return {
+    name: name ?? '이름 없는 도면',
+    customCatalog: customCatalog ?? {},
+    levels: [{ id: 'lv0', name: '1층', restricted: false, scene: sceneFields, items: items ?? [] }],
+  }
+}
+
+const EMPTY_LEVEL_SCENE = () => ({
+  version: 0, wallHeight: 250,
+  spawn: { x: 200, z: 200, yawDeg: 0 },
+  walls: [], floors: [], zones: [],
+})
+
 function Viewer() {
-  const [scene, setScene] = useState(null)     // items 제외 원본 (walls/floors/spawn)
-  const [items, setItems] = useState(null)     // 편집 가능한 가구 목록
+  const [doc, setDoc] = useState(null)          // { name, levels: [{id,name,restricted,scene,items}] }
+  const [active, setActive] = useState(0)       // 현재 층 인덱스 (doc.levels 기준)
   const [catalog, setCatalog] = useState(null)
   const [customItems, setCustomItems] = useState({}) // 사용자 정의 가구 타입 (내보내기에 포함)
   const [error, setError] = useState(null)
@@ -40,11 +73,15 @@ function Viewer() {
       fetch(`${import.meta.env.BASE_URL}catalog/catalog.json`).then(r => { if (!r.ok) throw new Error(`catalog.json ${r.status}`); return r.json() }),
     ])
       .then(([s, c]) => {
-        const { items: sceneItems, customCatalog, ...rest } = s
-        setScene(rest)
-        setItems(sceneItems ?? [])
-        setCustomItems(customCatalog ?? {})
+        const d = normalizeDoc(s)
+        setDoc(d)
+        setCustomItems(d.customCatalog)
         setCatalog(c)
+        // 고객 모드: 비공개 층은 존재 자체를 숨긴다 → 첫 공개 층에서 시작
+        if (VIEWER_ONLY) {
+          const first = d.levels.findIndex(lv => !lv.restricted)
+          setActive(first >= 0 ? first : 0)
+        }
       })
       .catch(e => setError(String(e)))
   }, [])
@@ -64,6 +101,19 @@ function Viewer() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  const level = doc?.levels[active] ?? null
+  const scene = level?.scene ?? null
+  const items = level?.items ?? null
+  // 고객에게 보이는 층 목록 (어드민은 전부)
+  const visibleLevels = useMemo(
+    () => (doc ? doc.levels.map((lv, i) => ({ ...lv, index: i })).filter(lv => !VIEWER_ONLY || !lv.restricted) : []),
+    [doc],
+  )
+
+  const updateLevel = useCallback(fn => {
+    setDoc(d => ({ ...d, levels: d.levels.map((lv, i) => (i === active ? fn(lv) : lv)) }))
+  }, [active])
+
   const catalogMerged = useMemo(
     () => (catalog ? { ...catalog, items: { ...catalog.items, ...customItems } } : null),
     [catalog, customItems],
@@ -82,8 +132,8 @@ function Viewer() {
         }
       floors = [{ x: minX, z: minZ, w: maxX - minX, d: maxZ - minZ, material: 'wood' }]
     }
-    return { ...scene, floors: floors ?? [], items }
-  }, [scene, items])
+    return { ...scene, name: doc ? `${doc.name} · ${level.name}` : scene.name, floors: floors ?? [], items }
+  }, [scene, items, doc, level])
   const colliders = useMemo(
     () => (sceneData && catalogMerged ? buildColliders(sceneData, catalogMerged) : null),
     [sceneData, catalogMerged],
@@ -97,44 +147,76 @@ function Viewer() {
     },
     removeCustom: id => {
       setCustomItems(prev => { const n = { ...prev }; delete n[id]; return n })
-      setItems(prev => prev.filter(i => i.catalogId !== id)) // 그 타입으로 배치된 가구도 제거
+      // 그 타입으로 배치된 가구는 모든 층에서 제거
+      setDoc(d => ({ ...d, levels: d.levels.map(lv => ({ ...lv, items: lv.items.filter(i => i.catalogId !== id) })) }))
     },
     customIds: new Set(Object.keys(customItems)),
   }), [customItems])
 
   const itemsApi = useMemo(() => ({
-    remove: id => setItems(prev => prev.filter(i => i.id !== id)),
-    add: item => setItems(prev => {
+    remove: id => updateLevel(lv => ({ ...lv, items: lv.items.filter(i => i.id !== id) })),
+    add: item => updateLevel(lv => {
       const id = item.id ?? `n-${Date.now().toString(36)}`
-      return [...prev, { ...item, id }]
+      return { ...lv, items: [...lv.items, { ...item, id }] }
     }),
-    update: (id, patch) => setItems(prev => prev.map(i => (i.id === id ? { ...i, ...patch } : i))),
-  }), [])
-
-  const sceneApi = useMemo(() => ({
-    addWall: wall => setScene(p => ({ ...p, walls: [...(p.walls ?? []), wall] })),
-    removeWall: idx => setScene(p => ({ ...p, walls: (p.walls ?? []).filter((_, i) => i !== idx) })),
-    addZone: zone => setScene(p => ({ ...p, zones: [...(p.zones ?? []), zone] })),
-    updateZone: (id, patch) => setScene(p => ({
-      ...p, zones: (p.zones ?? []).map(z => (z.id === id ? { ...z, ...patch } : z)),
+    update: (id, patch) => updateLevel(lv => ({
+      ...lv, items: lv.items.map(i => (i.id === id ? { ...i, ...patch } : i)),
     })),
-    removeZone: id => setScene(p => ({ ...p, zones: (p.zones ?? []).filter(z => z.id !== id) })),
-    setSpawn: spawn => setScene(p => ({ ...p, spawn })),
-    setUnderlay: underlay => setScene(p => ({ ...p, underlay })),
+  }), [updateLevel])
+
+  const patchScene = useCallback(fn => updateLevel(lv => ({ ...lv, scene: fn(lv.scene) })), [updateLevel])
+  const sceneApi = useMemo(() => ({
+    addWall: wall => patchScene(s => ({ ...s, walls: [...(s.walls ?? []), wall] })),
+    removeWall: idx => patchScene(s => ({ ...s, walls: (s.walls ?? []).filter((_, i) => i !== idx) })),
+    addZone: zone => patchScene(s => ({ ...s, zones: [...(s.zones ?? []), zone] })),
+    updateZone: (id, patch) => patchScene(s => ({
+      ...s, zones: (s.zones ?? []).map(z => (z.id === id ? { ...z, ...patch } : z)),
+    })),
+    removeZone: id => patchScene(s => ({ ...s, zones: (s.zones ?? []).filter(z => z.id !== id) })),
+    setSpawn: spawn => patchScene(s => ({ ...s, spawn })),
+    setUnderlay: underlay => patchScene(s => ({ ...s, underlay })),
     reset: () => {
-      setScene({ version: 0, name: '새 도면', wallHeight: 250, spawn: { x: 200, z: 200, yawDeg: 0 }, walls: [], floors: [], zones: [] })
-      setItems([])
+      setDoc({ name: '새 도면', levels: [{ id: 'lv0', name: '1층', restricted: false, scene: EMPTY_LEVEL_SCENE(), items: [] }] })
+      setActive(0)
     },
-  }), [])
+  }), [patchScene])
+
+  const levelsApi = useMemo(() => ({
+    setActive,
+    add: () => {
+      if (!doc) return
+      const n = doc.levels.length
+      setDoc(d => ({
+        ...d,
+        levels: [...d.levels, {
+          id: `lv-${Date.now().toString(36)}`,
+          name: `${d.levels.length + 1}층`,
+          restricted: false,
+          scene: EMPTY_LEVEL_SCENE(),
+          items: [],
+        }],
+      }))
+      setActive(n)
+    },
+    remove: idx => {
+      if (!doc || doc.levels.length <= 1) return
+      setDoc(d => ({ ...d, levels: d.levels.filter((_, i) => i !== idx) }))
+      setActive(a => Math.max(0, Math.min(a > idx ? a - 1 : a, doc.levels.length - 2)))
+    },
+    toggleRestricted: idx => setDoc(d => ({
+      ...d,
+      levels: d.levels.map((lv, i) => (i === idx ? { ...lv, restricted: !lv.restricted } : lv)),
+    })),
+  }), [doc])
 
   const importScene = useCallback(async file => {
     try {
       const j = JSON.parse(await file.text())
-      if (!Array.isArray(j.walls)) throw new Error('walls 배열이 없음 — 씬 JSON이 아님')
-      const { items: importedItems, customCatalog, ...rest } = j
-      setScene(rest)
-      setItems(importedItems ?? [])
-      setCustomItems(customCatalog ?? {})
+      if (!Array.isArray(j.walls) && !Array.isArray(j.levels)) throw new Error('walls/levels 배열이 없음 — 씬 JSON이 아님')
+      const d = normalizeDoc(j)
+      setDoc(d)
+      setCustomItems(d.customCatalog)
+      setActive(0)
       if (j.name) sceneName.current = String(j.name).replace(/[^\w가-힣-]+/g, '_')
       return null
     } catch (e) {
@@ -143,7 +225,17 @@ function Viewer() {
   }, [])
 
   const exportScene = useCallback(() => {
-    const payload = { ...scene, items }
+    const payload = {
+      version: 1,
+      name: doc.name,
+      levels: doc.levels.map(lv => ({
+        id: lv.id,
+        name: lv.name,
+        ...(lv.restricted ? { restricted: true } : {}),
+        ...lv.scene,
+        items: lv.items,
+      })),
+    }
     if (Object.keys(customItems).length) payload.customCatalog = customItems
     const json = JSON.stringify(payload, null, 2)
     const blob = new Blob([json], { type: 'application/json' })
@@ -152,14 +244,22 @@ function Viewer() {
     a.download = `${sceneName.current}.edited.json`
     a.click()
     URL.revokeObjectURL(a.href)
-  }, [scene, items, customItems])
+  }, [doc, customItems])
 
   if (error) return <div className="overlay"><div className="panel"><h1>로드 실패</h1><p>{error}</p></div></div>
   if (!sceneData || !catalogMerged) return <div className="overlay"><div className="panel"><p>로딩중…</p></div></div>
+  // 고객 모드인데 공개된 층이 하나도 없는 경우
+  if (VIEWER_ONLY && visibleLevels.length === 0) {
+    return <div className="overlay"><div className="panel"><h1>{doc.name}</h1><p>지금은 둘러볼 수 있는 층이 없습니다.</p></div></div>
+  }
 
   if (view === 'plan') {
     return (
       <Editor2D
+        buildingName={doc.name}
+        levels={doc.levels}
+        activeLevel={active}
+        levelsApi={levelsApi}
         scene={scene}
         items={items}
         catalog={catalogMerged}
@@ -173,6 +273,20 @@ function Viewer() {
     )
   }
 
+  const floorSwitch = visibleLevels.length > 1 && (
+    <div className="floor-switch">
+      {visibleLevels.map(lv => (
+        <button
+          key={lv.id}
+          className={lv.index === active ? 'on' : ''}
+          onClick={() => { setActive(lv.index); document.exitPointerLock?.() }}
+        >
+          {lv.name}{!VIEWER_ONLY && lv.restricted ? ' 🔒' : ''}
+        </button>
+      ))}
+    </div>
+  )
+
   if (IS_TOUCH) {
     return (
       <>
@@ -183,6 +297,7 @@ function Viewer() {
           <SceneRoot scene={{ ...sceneData, ceiling: false }} catalog={catalogMerged} />
           <OrbitViewer scene={sceneData} />
         </Canvas>
+        {floorSwitch}
         <div className="touch-banner">
           한 손가락 회전 · 두 손가락 확대/이동 — 1인칭 걷기 투어는 데스크톱에서 열려요
         </div>
@@ -215,6 +330,8 @@ function Viewer() {
           </div>
         </div>
       )}
+
+      {floorSwitch}
 
       <Minimap scene={sceneData} items={items} catalog={catalogMerged} />
 
