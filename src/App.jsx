@@ -167,8 +167,8 @@ export default function App() {
     <>
       <Canvas shadows camera={{ fov: 70, near: 0.05, far: 200 }}>
         {/* attach="background"는 부모가 scene이어야 먹는다 — group 안에 넣으면 no-op */}
-        <color attach="background" args={['#bfd4e6']} />
-        <fog attach="fog" args={['#bfd4e6', 30, 90]} />
+        <color attach="background" args={['#ccd6d0']} />
+        <fog attach="fog" args={['#ccd6d0', 30, 90]} />
         <SceneRoot scene={sceneData} catalog={catalogMerged} />
         <Player scene={sceneData} colliders={colliders} />
         <PointerLockControls onLock={() => setLocked(true)} onUnlock={() => setLocked(false)} />

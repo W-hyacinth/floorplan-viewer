@@ -1,34 +1,234 @@
 {
   "version": 0,
   "items": {
-    "sofa":         { "name": "소파",       "size": { "w": 200, "d": 90,  "h": 78 },  "color": "#6f8aa5",
-                      "interactions": { "sit": { "height": 42 } } },
-    "coffee_table": { "name": "거실테이블", "size": { "w": 110, "d": 60,  "h": 40 },  "color": "#8b6f4e" },
-    "tv_stand":     { "name": "TV장",       "size": { "w": 160, "d": 40,  "h": 45 },  "color": "#4a4a52" },
-    "dining_table": { "name": "식탁",       "size": { "w": 140, "d": 80,  "h": 74 },  "color": "#a4795a" },
-    "chair":        { "name": "의자",       "size": { "w": 45,  "d": 50,  "h": 85 },  "color": "#c8b291",
-                      "interactions": { "sit": { "height": 45 } } },
-    "office_chair": { "name": "사무의자",   "size": { "w": 56,  "d": 56,  "h": 92 },  "color": "#5d6875",
-                      "interactions": { "sit": { "height": 46 } } },
-    "stool":        { "name": "스툴",       "size": { "w": 35,  "d": 35,  "h": 45 },  "color": "#b5a486",
-                      "interactions": { "sit": { "height": 45 } } },
-    "bar_stool":    { "name": "바스툴",     "size": { "w": 38,  "d": 38,  "h": 75 },  "color": "#8a7458",
-                      "interactions": { "sit": { "height": 75 } } },
-    "armchair":     { "name": "안락의자",   "size": { "w": 85,  "d": 85,  "h": 95 },  "color": "#97a68c",
-                      "interactions": { "sit": { "height": 40 } } },
-    "bed":          { "name": "침대",       "size": { "w": 160, "d": 200, "h": 55 },  "color": "#b7c4d6",
-                      "interactions": { "sit": { "height": 55 } } },
-    "nightstand":   { "name": "협탁",       "size": { "w": 45,  "d": 40,  "h": 55 },  "color": "#8b6f4e" },
-    "wardrobe":     { "name": "옷장",       "size": { "w": 180, "d": 60,  "h": 220 }, "color": "#7a6a58" },
-    "bookshelf":    { "name": "책장",       "size": { "w": 80,  "d": 30,  "h": 180 }, "color": "#6e5a44" },
-    "plant":        { "name": "화분",       "size": { "w": 40,  "d": 40,  "h": 130 }, "color": "#5a8f5a" },
-    "desk":           { "name": "데스크",       "size": { "w": 140, "d": 70,  "h": 72 },  "color": "#d7d0c4" },
-    "meeting_table":  { "name": "회의테이블",   "size": { "w": 240, "d": 110, "h": 74 },  "color": "#a87f5e" },
-    "partition":      { "name": "파티션",       "size": { "w": 140, "d": 6,   "h": 130 }, "color": "#9fb3ac" },
-    "locker":         { "name": "락커",         "size": { "w": 120, "d": 50,  "h": 180 }, "color": "#5d6875" },
-    "whiteboard":     { "name": "화이트보드",   "size": { "w": 120, "d": 8,   "h": 180 }, "color": "#f2f2ee" },
-    "pantry_counter": { "name": "팬트리카운터", "size": { "w": 180, "d": 60,  "h": 90 },  "color": "#7a6a58" },
-    "floor_lamp":   { "name": "스탠드",     "size": { "w": 35,  "d": 35,  "h": 150 }, "color": "#f2e2c4",
-                      "interactions": { "toggle": { "what": "light" } } }
+    "sofa": {
+      "name": "소파",
+      "size": {
+        "w": 200,
+        "d": 90,
+        "h": 78
+      },
+      "color": "#4f6e62",
+      "interactions": {
+        "sit": {
+          "height": 42
+        }
+      }
+    },
+    "coffee_table": {
+      "name": "거실테이블",
+      "size": {
+        "w": 110,
+        "d": 60,
+        "h": 40
+      },
+      "color": "#8b6f4e"
+    },
+    "tv_stand": {
+      "name": "TV장",
+      "size": {
+        "w": 160,
+        "d": 40,
+        "h": 45
+      },
+      "color": "#4a4a52"
+    },
+    "dining_table": {
+      "name": "식탁",
+      "size": {
+        "w": 140,
+        "d": 80,
+        "h": 74
+      },
+      "color": "#a4795a"
+    },
+    "chair": {
+      "name": "의자",
+      "size": {
+        "w": 45,
+        "d": 50,
+        "h": 85
+      },
+      "color": "#c4b295",
+      "interactions": {
+        "sit": {
+          "height": 45
+        }
+      }
+    },
+    "office_chair": {
+      "name": "사무의자",
+      "size": {
+        "w": 56,
+        "d": 56,
+        "h": 92
+      },
+      "color": "#3f4650",
+      "interactions": {
+        "sit": {
+          "height": 46
+        }
+      }
+    },
+    "stool": {
+      "name": "스툴",
+      "size": {
+        "w": 35,
+        "d": 35,
+        "h": 45
+      },
+      "color": "#b5a486",
+      "interactions": {
+        "sit": {
+          "height": 45
+        }
+      }
+    },
+    "bar_stool": {
+      "name": "바스툴",
+      "size": {
+        "w": 38,
+        "d": 38,
+        "h": 75
+      },
+      "color": "#8a7458",
+      "interactions": {
+        "sit": {
+          "height": 75
+        }
+      }
+    },
+    "armchair": {
+      "name": "안락의자",
+      "size": {
+        "w": 85,
+        "d": 85,
+        "h": 95
+      },
+      "color": "#5c7a6c",
+      "interactions": {
+        "sit": {
+          "height": 40
+        }
+      }
+    },
+    "bed": {
+      "name": "침대",
+      "size": {
+        "w": 160,
+        "d": 200,
+        "h": 55
+      },
+      "color": "#b7c4d6",
+      "interactions": {
+        "sit": {
+          "height": 55
+        }
+      }
+    },
+    "nightstand": {
+      "name": "협탁",
+      "size": {
+        "w": 45,
+        "d": 40,
+        "h": 55
+      },
+      "color": "#8b6f4e"
+    },
+    "wardrobe": {
+      "name": "옷장",
+      "size": {
+        "w": 180,
+        "d": 60,
+        "h": 220
+      },
+      "color": "#7a6a58"
+    },
+    "bookshelf": {
+      "name": "책장",
+      "size": {
+        "w": 80,
+        "d": 30,
+        "h": 180
+      },
+      "color": "#6e5a44"
+    },
+    "plant": {
+      "name": "화분",
+      "size": {
+        "w": 40,
+        "d": 40,
+        "h": 130
+      },
+      "color": "#57905c"
+    },
+    "desk": {
+      "name": "데스크",
+      "size": {
+        "w": 140,
+        "d": 70,
+        "h": 72
+      },
+      "color": "#e3ddd2"
+    },
+    "meeting_table": {
+      "name": "회의테이블",
+      "size": {
+        "w": 240,
+        "d": 110,
+        "h": 74
+      },
+      "color": "#9c7850"
+    },
+    "partition": {
+      "name": "파티션",
+      "size": {
+        "w": 140,
+        "d": 6,
+        "h": 130
+      },
+      "color": "#a8b8ae"
+    },
+    "locker": {
+      "name": "락커",
+      "size": {
+        "w": 120,
+        "d": 50,
+        "h": 180
+      },
+      "color": "#46505a"
+    },
+    "whiteboard": {
+      "name": "화이트보드",
+      "size": {
+        "w": 120,
+        "d": 8,
+        "h": 180
+      },
+      "color": "#f4f4f0"
+    },
+    "pantry_counter": {
+      "name": "팬트리카운터",
+      "size": {
+        "w": 180,
+        "d": 60,
+        "h": 90
+      },
+      "color": "#6f6052"
+    },
+    "floor_lamp": {
+      "name": "스탠드",
+      "size": {
+        "w": 35,
+        "d": 35,
+        "h": 150
+      },
+      "color": "#f2e2c4",
+      "interactions": {
+        "toggle": {
+          "what": "light"
+        }
+      }
+    }
   }
 }

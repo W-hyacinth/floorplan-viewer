@@ -7,9 +7,9 @@ import { editor, subscribeEditor, getEditorSnapshot } from '../lib/editor.js'
 import { setPrompt } from '../lib/hud.js'
 import { obbOverlapsObb, obbIntersectsSegment, circleOverlapsObb } from '../lib/collision.js'
 
-const WALL_COLOR = '#e9e4da'
-const FLOOR_COLORS = { wood: '#b98d5f', tile: '#cfcac0', carpet: '#7d8a80', default: '#b9a98f' }
-const CEILING_COLOR = '#f2efe9'
+const WALL_COLOR = '#eae6df'
+const FLOOR_COLORS = { wood: '#c09a6e', tile: '#d8d4cb', carpet: '#7f8d84', default: '#b9a98f' }
+const CEILING_COLOR = '#f4f2ed'
 
 export function SceneRoot({ scene, catalog }) {
   const wallMeshes = useMemo(() => buildWalls(scene), [scene])
@@ -46,6 +46,14 @@ export function SceneRoot({ scene, catalog }) {
         >
           <boxGeometry args={[zn.w * CM, 0.03, zn.d * CM]} />
           <meshStandardMaterial color="#d64545" transparent opacity={0.3} />
+        </mesh>
+      ))}
+
+      {/* 천장 조명 패널 (시각 전용 — 실광원은 태양광이 담당) */}
+      {(scene.lights ?? []).map((l, i) => (
+        <mesh key={i} position={[(l.x) * CM, (scene.wallHeight ?? 250) * CM - 0.04, (l.z) * CM]}>
+          <boxGeometry args={[(l.w ?? 120) * CM, 0.05, (l.d ?? 60) * CM]} />
+          <meshStandardMaterial color="#ffffff" emissive="#fff4dd" emissiveIntensity={1.6} />
         </mesh>
       ))}
 
@@ -95,7 +103,8 @@ function Floor({ f, wallHeight, ceiling }) {
       {ceiling && (
         <mesh position={[cx, wallHeight * CM, cz]}>
           <boxGeometry args={[f.w * CM, 0.02, f.d * CM]} />
-          <meshStandardMaterial color={CEILING_COLOR} />
+          {/* 아랫면은 직사광을 못 받아 탁해진다 — 약한 자체발광으로 실내 천장 톤 유지 */}
+          <meshStandardMaterial color={CEILING_COLOR} emissive={CEILING_COLOR} emissiveIntensity={0.35} />
         </mesh>
       )}
     </group>
