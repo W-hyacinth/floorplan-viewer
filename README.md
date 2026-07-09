@@ -8,9 +8,9 @@
 
 | | |
 |---|---|
-| 🚶 고객 모드 (3D 투어) | https://floorplan-viewer.vercel.app/?viewer=1 |
-| 🛠️ 어드민 모드 (2D 에디터) | https://floorplan-viewer.vercel.app/?mode=admin |
-| 🏠 소개 페이지 | https://floorplan-viewer.vercel.app/ |
+| 🚶 고객 모드 (3D 투어) | https://floorplan-viewer-sooty.vercel.app/?viewer=1 |
+| 🛠️ 어드민 모드 (2D 에디터) | https://floorplan-viewer-sooty.vercel.app/?mode=admin |
+| 🏠 소개 페이지 | https://floorplan-viewer-sooty.vercel.app/ |
 
 ![고객 모드 — 1인칭 워크스루](public/og.jpg)
 ![어드민 모드 — 2D 도면 에디터](public/shot-editor.jpg)
