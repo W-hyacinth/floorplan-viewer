@@ -1,0 +1,50 @@
+{
+  "version": 0,
+  "name": "demo-apartment (8m x 5m)",
+  "wallHeight": 250,
+  "spawn": { "x": 250, "z": 380, "yawDeg": 0 },
+  "walls": [
+    {
+      "from": { "x": 0, "z": 0 }, "to": { "x": 800, "z": 0 }, "thickness": 15,
+      "openings": [
+        { "type": "window", "offset": 120, "width": 200, "height": 130, "sillHeight": 90 },
+        { "type": "window", "offset": 570, "width": 160, "height": 130, "sillHeight": 90 }
+      ]
+    },
+    { "from": { "x": 800, "z": 0 }, "to": { "x": 800, "z": 500 }, "thickness": 15 },
+    {
+      "from": { "x": 800, "z": 500 }, "to": { "x": 0, "z": 500 }, "thickness": 15,
+      "openings": [
+        { "type": "door", "offset": 340, "width": 100, "height": 210 }
+      ]
+    },
+    { "from": { "x": 0, "z": 500 }, "to": { "x": 0, "z": 0 }, "thickness": 15 },
+    {
+      "from": { "x": 500, "z": 0 }, "to": { "x": 500, "z": 500 }, "thickness": 10,
+      "openings": [
+        { "type": "door", "offset": 360, "width": 90, "height": 210 }
+      ]
+    }
+  ],
+  "floors": [
+    { "x": 0, "z": 0, "w": 800, "d": 500, "material": "wood" }
+  ],
+  "items": [
+    { "id": "sofa-1",       "catalogId": "sofa",         "position": { "x": 70,  "z": 250 }, "rotationY": -90 },
+    { "id": "ctable-1",     "catalogId": "coffee_table", "position": { "x": 200, "z": 250 }, "rotationY": -90 },
+    { "id": "tv-1",         "catalogId": "tv_stand",     "position": { "x": 470, "z": 250 }, "rotationY": 90 },
+    { "id": "dtable-1",     "catalogId": "dining_table", "position": { "x": 220, "z": 110 }, "rotationY": 0 },
+    { "id": "chair-1",      "catalogId": "chair",        "position": { "x": 185, "z": 45 },  "rotationY": 180 },
+    { "id": "chair-2",      "catalogId": "chair",        "position": { "x": 255, "z": 45 },  "rotationY": 180 },
+    { "id": "chair-3",      "catalogId": "chair",        "position": { "x": 185, "z": 175 }, "rotationY": 0 },
+    { "id": "chair-4",      "catalogId": "chair",        "position": { "x": 255, "z": 175 }, "rotationY": 0 },
+    { "id": "bookshelf-1",  "catalogId": "bookshelf",    "position": { "x": 60,  "z": 475 }, "rotationY": 0 },
+    { "id": "plant-1",      "catalogId": "plant",        "position": { "x": 35,  "z": 35 },  "rotationY": 0 },
+    { "id": "bed-1",        "catalogId": "bed",          "position": { "x": 650, "z": 120 }, "rotationY": 180 },
+    { "id": "nightstand-1", "catalogId": "nightstand",   "position": { "x": 535, "z": 45 },  "rotationY": 0 },
+    { "id": "wardrobe-1",   "catalogId": "wardrobe",     "position": { "x": 650, "z": 460 }, "rotationY": 0 },
+    { "id": "plant-2",      "catalogId": "plant",        "position": { "x": 765, "z": 60 },  "rotationY": 0 },
+    { "id": "lamp-1",       "catalogId": "floor_lamp",   "position": { "x": 150, "z": 465 }, "rotationY": 0 },
+    { "id": "lamp-2",       "catalogId": "floor_lamp",   "position": { "x": 770, "z": 210 }, "rotationY": 0 }
+  ]
+}
