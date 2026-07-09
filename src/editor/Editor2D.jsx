@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { buildColliders, obbOverlapsObb, obbIntersectsSegment } from '../lib/collision.js'
 import { CM, deg } from '../lib/units.js'
+import { detectEnclosedArea } from '../lib/area.js'
+import { zonePoints, zoneCentroid } from '../lib/zone.js'
 
 // 2D 탑뷰 도면 에디터. 도면 좌표(cm, +z=아래)가 SVG 좌표와 1:1 — 변환 없음.
 const SNAP = 5 // cm
@@ -11,6 +13,7 @@ export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi
   const [cursor, setCursor] = useState(null)     // 도면 좌표 (벽/구역 미리보기용)
   const [wallStart, setWallStart] = useState(null)
   const [zoneStart, setZoneStart] = useState(null)
+  const [zoneMsg, setZoneMsg] = useState(null)
   const [importErr, setImportErr] = useState(null)
   const [confirmReset, setConfirmReset] = useState(false)
   const svgRef = useRef(null)
@@ -85,8 +88,31 @@ export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi
     e.stopPropagation()
     setSelected({ kind: 'zone', id: zn.id })
     const p = toPlan(e)
-    dragRef.current = { kind: 'zone', id: zn.id, dx: zn.x - p.x, dz: zn.z - p.z }
+    if (zn.points) {
+      dragRef.current = { kind: 'zonepoly', id: zn.id, start: p, orig: zn.points }
+    } else {
+      dragRef.current = { kind: 'zone', id: zn.id, dx: zn.x - p.x, dz: zn.z - p.z }
+    }
     capture(e)
+  }
+  const onVertexDown = (e, zn, idx) => {
+    e.stopPropagation()
+    dragRef.current = { kind: 'zonevert', id: zn.id, idx }
+    capture(e)
+  }
+  // 변 중간점 핸들 드래그 = 그 자리에 꼭짓점 삽입 후 바로 이동
+  const onMidDown = (e, zn, idx) => {
+    e.stopPropagation()
+    const p = toPlan(e)
+    const pts = [...zn.points]
+    pts.splice(idx + 1, 0, { x: snap(p.x), z: snap(p.z) })
+    sceneApi.updateZone(zn.id, { points: pts })
+    dragRef.current = { kind: 'zonevert', id: zn.id, idx: idx + 1 }
+    capture(e)
+  }
+  const removeVertex = (zn, idx) => {
+    if (zn.points.length <= 3) return
+    sceneApi.updateZone(zn.id, { points: zn.points.filter((_, i) => i !== idx) })
   }
   const onWallDown = (e, idx) => {
     if (tool !== 'select') return
@@ -128,19 +154,47 @@ export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi
     if (!d) return
     if (d.kind === 'item') itemsApi.update(d.id, { position: { x: snap(p.x + d.dx), z: snap(p.z + d.dz) } })
     else if (d.kind === 'zone') sceneApi.updateZone(d.id, { x: snap(p.x + d.dx), z: snap(p.z + d.dz) })
+    else if (d.kind === 'zonepoly') {
+      const dx = snap(p.x - d.start.x), dz = snap(p.z - d.start.z)
+      sceneApi.updateZone(d.id, { points: d.orig.map(q => ({ x: q.x + dx, z: q.z + dz })) })
+    }
+    else if (d.kind === 'zonevert') {
+      const zn = (scene.zones ?? []).find(z => z.id === d.id)
+      if (zn?.points) {
+        sceneApi.updateZone(d.id, {
+          points: zn.points.map((q, i) => (i === d.idx ? { x: snap(p.x), z: snap(p.z) } : q)),
+        })
+      }
+    }
     else if (d.kind === 'spawn') sceneApi.setSpawn({ ...(scene.spawn ?? { yawDeg: 0 }), x: snap(p.x), z: snap(p.z) })
   }
   const onSvgUp = e => {
     dragRef.current = null
     if (tool === 'zone' && zoneStart) {
       const p = toPlan(e)
-      const x1 = snap(Math.min(zoneStart.x, p.x)), x2 = snap(Math.max(zoneStart.x, p.x))
-      const z1 = snap(Math.min(zoneStart.z, p.z)), z2 = snap(Math.max(zoneStart.z, p.z))
-      if (x2 - x1 >= 30 && z2 - z1 >= 30) {
-        const id = `zone-${Date.now().toString(36)}`
-        sceneApi.addZone({ id, x: x1, z: z1, w: x2 - x1, d: z2 - z1 })
-        setSelected({ kind: 'zone', id })
-        setTool('select')
+      const moved = Math.hypot(p.x - zoneStart.x, p.z - zoneStart.z)
+      if (moved < 10) {
+        // 클릭 = 벽으로 닫힌 영역 자동 감지 → 다각형 구역
+        const points = detectEnclosedArea(scene, zoneStart.x, zoneStart.z)
+        if (points) {
+          const id = `zone-${Date.now().toString(36)}`
+          sceneApi.addZone({ id, points })
+          setSelected({ kind: 'zone', id })
+          setTool('select')
+          setZoneMsg(null)
+        } else {
+          setZoneMsg('닫힌 영역이 아니에요 — 벽으로 둘러싸인 곳을 클릭하거나, 드래그로 직접 지정하세요')
+          setTimeout(() => setZoneMsg(null), 4000)
+        }
+      } else {
+        const x1 = snap(Math.min(zoneStart.x, p.x)), x2 = snap(Math.max(zoneStart.x, p.x))
+        const z1 = snap(Math.min(zoneStart.z, p.z)), z2 = snap(Math.max(zoneStart.z, p.z))
+        if (x2 - x1 >= 30 && z2 - z1 >= 30) {
+          const id = `zone-${Date.now().toString(36)}`
+          sceneApi.addZone({ id, x: x1, z: z1, w: x2 - x1, d: z2 - z1 })
+          setSelected({ kind: 'zone', id })
+          setTool('select')
+        }
       }
       setZoneStart(null)
     }
@@ -224,7 +278,7 @@ export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi
         </div>
         <span className="hint">
           {tool === 'wall' ? '클릭-클릭으로 벽 연속 그리기 · ESC 끝내기'
-            : tool === 'zone' ? '드래그로 출입금지 구역 지정'
+            : tool === 'zone' ? (zoneMsg ?? '클릭 = 닫힌 영역 자동 감지(다각형) · 드래그 = 사각형 지정')
             : '드래그 이동 · R 회전 · Delete 삭제 · 빨강 = 겹침'}
           {importErr && <em className="import-err"> — 불러오기 실패: {importErr}</em>}
         </span>
@@ -318,6 +372,17 @@ export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi
             ) : selected?.kind === 'zone' ? (
               <>
                 <div className="sel-name">🚫 출입금지 구역</div>
+                {(() => {
+                  const zn = (scene.zones ?? []).find(z => z.id === selected.id)
+                  if (zn?.points) {
+                    return <small>꼭짓점 드래그 = 이동 · 변 중간점 드래그 = 꼭짓점 추가 · 꼭짓점 더블클릭 = 삭제</small>
+                  }
+                  return (
+                    <div className="sel-row" style={{ marginBottom: 8 }}>
+                      <button onClick={() => sceneApi.updateZone(zn.id, { points: zonePoints(zn) })}>다각형으로 변환</button>
+                    </div>
+                  )
+                })()}
                 <div className="sel-row"><button className="danger" onClick={deleteSelected}>삭제</button></div>
               </>
             ) : selected?.kind === 'wall' ? (
@@ -371,20 +436,47 @@ export function Editor2D({ scene, items, catalog, catalogApi, itemsApi, sceneApi
               <WallPlan key={i} wall={w} selected={selected?.kind === 'wall' && selected.id === i} onDown={e => onWallDown(e, i)} />
             ))}
 
-            {/* 출입금지 구역 */}
-            {(scene.zones ?? []).map(zn => (
-              <g key={zn.id} onPointerDown={e => onZoneDown(e, zn)} style={{ cursor: tool === 'select' ? 'grab' : 'default' }}>
-                <rect
-                  x={zn.x} y={zn.z} width={zn.w} height={zn.d}
-                  fill="url(#hatch)"
-                  stroke={selected?.kind === 'zone' && selected.id === zn.id ? '#2f6fed' : '#d64545'}
-                  strokeWidth={selected?.kind === 'zone' && selected.id === zn.id ? 5 : 3}
-                />
-                <text x={zn.x + zn.w / 2} y={zn.z + zn.d / 2 + 5} textAnchor="middle" fontSize="15" fill="#d64545" style={{ pointerEvents: 'none', userSelect: 'none' }}>
-                  출입금지
-                </text>
-              </g>
-            ))}
+            {/* 출입금지 구역 (사각형·다각형 공용 — 다각형은 선택 시 꼭짓점 편집) */}
+            {(scene.zones ?? []).map(zn => {
+              const pts = zonePoints(zn)
+              const sel = selected?.kind === 'zone' && selected.id === zn.id
+              const c = zoneCentroid(zn)
+              return (
+                <g key={zn.id} onPointerDown={e => onZoneDown(e, zn)} style={{ cursor: tool === 'select' ? 'grab' : 'default' }}>
+                  <polygon
+                    points={pts.map(q => `${q.x},${q.z}`).join(' ')}
+                    fill="url(#hatch)"
+                    stroke={sel ? '#2f6fed' : '#d64545'}
+                    strokeWidth={sel ? 5 : 3}
+                  />
+                  <text x={c.x} y={c.z + 5} textAnchor="middle" fontSize="15" fill="#d64545" style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                    출입금지
+                  </text>
+                  {sel && zn.points && pts.map((q, i) => {
+                    const n = pts[(i + 1) % pts.length]
+                    return (
+                      <circle
+                        key={`m${i}`}
+                        cx={(q.x + n.x) / 2} cy={(q.z + n.z) / 2} r="8"
+                        fill="rgba(47,111,237,0.45)" stroke="#fff" strokeWidth="2"
+                        onPointerDown={e => onMidDown(e, zn, i)}
+                        style={{ cursor: 'copy' }}
+                      />
+                    )
+                  })}
+                  {sel && zn.points && pts.map((q, i) => (
+                    <circle
+                      key={`v${i}`}
+                      cx={q.x} cy={q.z} r="10"
+                      fill="#fff" stroke="#2f6fed" strokeWidth="3"
+                      onPointerDown={e => onVertexDown(e, zn, i)}
+                      onDoubleClick={e => { e.stopPropagation(); removeVertex(zn, i) }}
+                      style={{ cursor: 'move' }}
+                    />
+                  ))}
+                </g>
+              )
+            })}
 
             {items.map(it => {
               const c = catalog.items[it.catalogId]

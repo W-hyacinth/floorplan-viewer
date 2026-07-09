@@ -76,7 +76,8 @@ export function Landing() {
               <tbody>
                 <tr><th>드래그</th><td>가구 이동 · <kbd>R</kbd> 회전 · <kbd>Delete</kbd> 삭제</td></tr>
                 <tr><th>카탈로그 클릭</th><td>가구 추가 (커스텀 가구 제작 가능)</td></tr>
-                <tr><th>벽 그리기</th><td>클릭-클릭 연속 · 금지구역 드래그 지정</td></tr>
+                <tr><th>벽 그리기</th><td>클릭-클릭 연속</td></tr>
+                <tr><th>금지구역</th><td>클릭 = 닫힌 영역 자동 감지 · 드래그 = 사각형 · 꼭짓점 편집</td></tr>
                 <tr><th>JSON</th><td>씬 내보내기 · 불러오기</td></tr>
                 <tr><th>Tab</th><td>도면 ↔ 3D 즉시 전환</td></tr>
               </tbody>
@@ -91,6 +92,7 @@ export function Landing() {
             <li><strong>물리엔진 없는 자체 충돌.</strong> 평면 이동에는 원 vs 선분·회전박스 2D 충돌이면 충분해서, 수백 KB의 물리엔진 대신 직접 구현했습니다.</li>
             <li><strong>캔버스 라이브러리 없는 SVG 에디터.</strong> 도면 좌표와 SVG 좌표를 1:1로 맞춰 변환 계층을 없앴습니다.</li>
             <li><strong>cm → m 좌표 변환은 단 한 곳.</strong> 2D와 3D의 좌표계 규칙을 문서(SCHEMA.md)로 먼저 정하고, 변환 코드를 한 지점에 강제해 거울상 버그를 원천 차단했습니다.</li>
+            <li><strong>클릭 한 번으로 방을 감지하는 금지구역.</strong> 도면을 격자로 래스터화해 플러드필로 닫힌 영역을 찾고, 경계를 추적해 다각형으로 만듭니다. 고객 화면에선 금지구역이 그냥 벽처럼 보입니다.</li>
             <li><strong>60fps 루프와 React 렌더 분리.</strong> 매 프레임 데이터는 mutable 스토어로, UI 갱신은 useSyncExternalStore로 필요할 때만.</li>
           </ul>
           <p className="landing-links">

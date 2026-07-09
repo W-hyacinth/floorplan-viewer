@@ -1,5 +1,6 @@
 // 충돌은 전부 월드 좌표(m)의 2D xz 평면에서 처리. 물리엔진 금지. (SCHEMA.md)
 import { CM, deg } from './units.js'
+import { zonePoints } from './zone.js'
 
 // 씬 JSON → 충돌 프리미티브. 벽=선분(문 구간 제외), 가구=회전 박스.
 export function buildColliders(scene, catalog) {
@@ -35,15 +36,13 @@ export function buildColliders(scene, catalog) {
   }
 
   const boxes = []
-  // 출입금지 구역 = 회전 없는 박스 콜라이더
+  // 출입금지 구역: 다각형 변을 벽과 동일한 선분 콜라이더로 (사각형도 zonePoints로 통일)
   for (const zn of scene.zones ?? []) {
-    boxes.push({
-      cx: (zn.x + zn.w / 2) * CM,
-      cz: (zn.z + zn.d / 2) * CM,
-      hw: (zn.w / 2) * CM,
-      hd: (zn.d / 2) * CM,
-      rotY: 0,
-    })
+    const pts = zonePoints(zn)
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length]
+      segments.push({ ax: a.x * CM, az: a.z * CM, bx: b.x * CM, bz: b.z * CM, pad: 0 })
+    }
   }
   for (const item of scene.items ?? []) {
     const cat = catalog.items[item.catalogId]

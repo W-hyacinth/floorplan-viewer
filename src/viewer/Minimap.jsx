@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { pose } from '../lib/pose.js'
+import { zonePoints } from '../lib/zone.js'
 
 // 3D 체험 중 우상단 미니맵 — 정적 도면은 React가 한 번 그리고,
 // 플레이어 마커만 rAF로 transform 갱신한다.
@@ -58,7 +59,7 @@ export function Minimap({ scene, items, catalog }) {
 
         {/* 금지구역: 고객 미니맵에선 벽과 같은 톤의 막힌 덩어리 — 가구 위에 그려 내부를 가린다 */}
         {(scene.zones ?? []).map(zn => (
-          <rect key={zn.id} x={zn.x} y={zn.z} width={zn.w} height={zn.d} fill="#cdd6e0" />
+          <polygon key={zn.id} points={zonePoints(zn).map(p => `${p.x},${p.z}`).join(' ')} fill="#cdd6e0" />
         ))}
 
         {(scene.walls ?? []).map((wall, i) => <MiniWall key={i} wall={wall} />)}
