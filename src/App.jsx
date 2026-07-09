@@ -20,10 +20,10 @@ export default function App() {
   const [locked, setLocked] = useState(false)
   const [view, setView] = useState(VIEWER_ONLY ? 'walk' : 'plan') // 'plan'=어드민 도면 / 'walk'=3D 체험
   const { prompt, tone } = useSyncExternalStore(subscribeHud, getHudSnapshot)
-  const sceneName = useRef('demo')
+  const sceneName = useRef('office')
 
   useEffect(() => {
-    const name = new URLSearchParams(location.search).get('scene') || 'demo'
+    const name = new URLSearchParams(location.search).get('scene') || 'office'
     sceneName.current = name
     Promise.all([
       fetch(`${import.meta.env.BASE_URL}scenes/${name}.json`).then(r => { if (!r.ok) throw new Error(`scenes/${name}.json ${r.status}`); return r.json() }),

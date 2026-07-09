@@ -22,6 +22,12 @@
     "wardrobe":     { "name": "옷장",       "size": { "w": 180, "d": 60,  "h": 220 }, "color": "#7a6a58" },
     "bookshelf":    { "name": "책장",       "size": { "w": 80,  "d": 30,  "h": 180 }, "color": "#6e5a44" },
     "plant":        { "name": "화분",       "size": { "w": 40,  "d": 40,  "h": 130 }, "color": "#5a8f5a" },
+    "desk":           { "name": "데스크",       "size": { "w": 140, "d": 70,  "h": 72 },  "color": "#d7d0c4" },
+    "meeting_table":  { "name": "회의테이블",   "size": { "w": 240, "d": 110, "h": 74 },  "color": "#a87f5e" },
+    "partition":      { "name": "파티션",       "size": { "w": 140, "d": 6,   "h": 130 }, "color": "#9fb3ac" },
+    "locker":         { "name": "락커",         "size": { "w": 120, "d": 50,  "h": 180 }, "color": "#5d6875" },
+    "whiteboard":     { "name": "화이트보드",   "size": { "w": 120, "d": 8,   "h": 180 }, "color": "#f2f2ee" },
+    "pantry_counter": { "name": "팬트리카운터", "size": { "w": 180, "d": 60,  "h": 90 },  "color": "#7a6a58" },
     "floor_lamp":   { "name": "스탠드",     "size": { "w": 35,  "d": 35,  "h": 150 }, "color": "#f2e2c4",
                       "interactions": { "toggle": { "what": "light" } } }
   }

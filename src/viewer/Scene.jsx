@@ -8,7 +8,7 @@ import { setPrompt } from '../lib/hud.js'
 import { obbOverlapsObb, obbIntersectsSegment, circleOverlapsObb } from '../lib/collision.js'
 
 const WALL_COLOR = '#e9e4da'
-const FLOOR_COLORS = { wood: '#b98d5f', tile: '#cfcac0', default: '#b9a98f' }
+const FLOOR_COLORS = { wood: '#b98d5f', tile: '#cfcac0', carpet: '#7d8a80', default: '#b9a98f' }
 const CEILING_COLOR = '#f2efe9'
 
 export function SceneRoot({ scene, catalog }) {
@@ -19,16 +19,7 @@ export function SceneRoot({ scene, catalog }) {
     <group>
       <hemisphereLight intensity={0.55} color="#ffffff" groundColor="#8a7a66" />
       <ambientLight intensity={0.25} />
-      <directionalLight
-        castShadow
-        position={[6, 9, 4]}
-        intensity={1.1}
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-12}
-        shadow-camera-right={12}
-        shadow-camera-top={12}
-        shadow-camera-bottom={-12}
-      />
+      <SunLight bounds={bounds} />
 
       {/* 바깥 지면 (현관으로 나갔을 때 허공 방지) */}
       <mesh position={[bounds.cx, -0.03, bounds.cz]} receiveShadow>
@@ -62,6 +53,32 @@ export function SceneRoot({ scene, catalog }) {
         <Item key={item.id} item={item} cat={catalog.items[item.catalogId]} />
       ))}
     </group>
+  )
+}
+
+// 태양광: 씬 크기에 맞춰 그림자 절두체를 산출 (고정 ±12m는 큰 씬에서 그림자가 잘린다)
+function SunLight({ bounds }) {
+  const ref = useRef()
+  const half = Math.max(bounds.w, bounds.d) / 2 + 3 // 바깥 지면 여유분
+  useEffect(() => {
+    const light = ref.current
+    if (!light) return
+    light.target.position.set(bounds.cx, 0, bounds.cz)
+    light.target.updateMatrixWorld()
+  }, [bounds])
+  return (
+    <directionalLight
+      ref={ref}
+      castShadow
+      position={[bounds.cx + 6, 9 + half * 0.4, bounds.cz + 4]}
+      intensity={1.1}
+      shadow-mapSize={[2048, 2048]}
+      shadow-camera-left={-half}
+      shadow-camera-right={half}
+      shadow-camera-top={half}
+      shadow-camera-bottom={-half}
+      shadow-camera-far={half * 4 + 20}
+    />
   )
 }
 
