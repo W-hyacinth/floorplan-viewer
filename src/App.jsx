@@ -7,11 +7,19 @@ import { Minimap } from './viewer/Minimap.jsx'
 import { Editor2D } from './editor/Editor2D.jsx'
 import { buildColliders } from './lib/collision.js'
 import { subscribeHud, getHudSnapshot } from './lib/hud.js'
+import { Landing } from './Landing.jsx'
 
-// ?viewer=1 → 고객용: 3D 체험만, 도면 편집 접근 불가
-const VIEWER_ONLY = new URLSearchParams(location.search).has('viewer')
+// 파라미터 없음 → 랜딩 / ?viewer=1 → 고객용 3D 전용 / ?mode=admin 또는 ?scene= → 에디터
+const PARAMS = new URLSearchParams(location.search)
+const VIEWER_ONLY = PARAMS.has('viewer')
+const IS_LANDING = !VIEWER_ONLY && PARAMS.get('mode') !== 'admin' && !PARAMS.has('scene')
 
 export default function App() {
+  if (IS_LANDING) return <Landing />
+  return <Viewer />
+}
+
+function Viewer() {
   const [scene, setScene] = useState(null)     // items 제외 원본 (walls/floors/spawn)
   const [items, setItems] = useState(null)     // 편집 가능한 가구 목록
   const [catalog, setCatalog] = useState(null)
