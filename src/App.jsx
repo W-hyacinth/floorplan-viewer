@@ -287,6 +287,13 @@ function Viewer() {
     </div>
   )
 
+  // 어드민이 비공개 층을 미리보는 중임을 명확히 — 고객용 투어에선 이 층 자체가 목록에 없다
+  const restrictedBadge = !VIEWER_ONLY && level?.restricted && (
+    <div className="restricted-badge">
+      🔒 고객 비공개 층 — 고객용 3D 투어에는 나타나지 않습니다 (어드민 미리보기)
+    </div>
+  )
+
   if (IS_TOUCH) {
     return (
       <>
@@ -298,6 +305,7 @@ function Viewer() {
           <OrbitViewer scene={sceneData} />
         </Canvas>
         {floorSwitch}
+        {restrictedBadge}
         <div className="touch-banner">
           한 손가락 회전 · 두 손가락 확대/이동 — 1인칭 걷기 투어는 데스크톱에서 열려요
         </div>
@@ -332,6 +340,7 @@ function Viewer() {
       )}
 
       {floorSwitch}
+      {restrictedBadge}
 
       <Minimap scene={sceneData} items={items} catalog={catalogMerged} />
 

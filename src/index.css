@@ -222,6 +222,18 @@ canvas { display: block; }
 .floor-switch button:hover { background: rgba(40, 46, 56, 0.85); }
 .floor-switch button.on { background: #3d6b57; border-color: #3d6b57; font-weight: 700; }
 
+/* 어드민이 비공개 층을 미리볼 때 상단 배지 */
+.restricted-badge {
+  position: fixed; top: 16px; left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 220px);
+  background: rgba(120, 84, 20, 0.88); color: #ffe9c4;
+  border: 1px solid rgba(255, 205, 112, 0.45);
+  padding: 9px 16px; border-radius: 999px;
+  font-size: 13px; text-align: center;
+  pointer-events: none; word-break: keep-all;
+}
+
 .touch-banner {
   position: fixed; left: 50%; bottom: 18px;
   transform: translateX(-50%);
