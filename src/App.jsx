@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { Canvas } from '@react-three/fiber'
-import { PointerLockControls } from '@react-three/drei'
+import { Canvas, useThree } from '@react-three/fiber'
+import { OrbitControls, PointerLockControls } from '@react-three/drei'
 import { SceneRoot } from './viewer/Scene.jsx'
 import { Player } from './viewer/Player.jsx'
 import { Minimap } from './viewer/Minimap.jsx'
@@ -13,6 +13,8 @@ import { Landing } from './Landing.jsx'
 const PARAMS = new URLSearchParams(location.search)
 const VIEWER_ONLY = PARAMS.has('viewer')
 const IS_LANDING = !VIEWER_ONLY && PARAMS.get('mode') !== 'admin' && !PARAMS.has('scene')
+// 터치 기기: 포인터락 1인칭이 불가능 → 천장 없는 궤도 둘러보기로 폴백
+const IS_TOUCH = window.matchMedia?.('(pointer: coarse)').matches ?? false
 
 export default function App() {
   if (IS_LANDING) return <Landing />
@@ -171,6 +173,23 @@ function Viewer() {
     )
   }
 
+  if (IS_TOUCH) {
+    return (
+      <>
+        <Canvas shadows camera={{ fov: 60, near: 0.05, far: 200 }}>
+          <color attach="background" args={['#ccd6d0']} />
+          <fog attach="fog" args={['#ccd6d0', 40, 120]} />
+          {/* 위에서 내려다보는 돌하우스 뷰 — 천장을 벗겨 실내가 보이게 */}
+          <SceneRoot scene={{ ...sceneData, ceiling: false }} catalog={catalogMerged} />
+          <OrbitViewer scene={sceneData} />
+        </Canvas>
+        <div className="touch-banner">
+          한 손가락 회전 · 두 손가락 확대/이동 — 1인칭 걷기 투어는 데스크톱에서 열려요
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       <Canvas shadows camera={{ fov: 70, near: 0.05, far: 200 }}>
@@ -201,5 +220,34 @@ function Viewer() {
 
       {prompt && <div className={tone === 'bad' ? 'prompt prompt--bad' : 'prompt'}>{prompt}</div>}
     </>
+  )
+}
+
+// 터치 폴백: 씬 바운즈 기준으로 카메라를 띄우고 궤도 컨트롤로 둘러본다
+function OrbitViewer({ scene }) {
+  const { camera } = useThree()
+  const b = useMemo(() => {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
+    for (const f of scene.floors ?? []) {
+      minX = Math.min(minX, f.x); maxX = Math.max(maxX, f.x + f.w)
+      minZ = Math.min(minZ, f.z); maxZ = Math.max(maxZ, f.z + f.d)
+    }
+    if (!isFinite(minX)) { minX = 0; maxX = 1000; minZ = 0; maxZ = 800 }
+    return {
+      cx: ((minX + maxX) / 2) / 100, cz: ((minZ + maxZ) / 2) / 100,
+      w: (maxX - minX) / 100, d: (maxZ - minZ) / 100,
+    }
+  }, [scene])
+  useEffect(() => {
+    camera.position.set(b.cx + b.w * 0.45, Math.max(b.w, b.d) * 0.55 + 3, b.cz + b.d * 0.95)
+  }, [b, camera])
+  return (
+    <OrbitControls
+      makeDefault
+      target={[b.cx, 0.8, b.cz]}
+      maxPolarAngle={Math.PI / 2 - 0.08}
+      minDistance={2}
+      maxDistance={Math.max(b.w, b.d) * 3}
+    />
   )
 }

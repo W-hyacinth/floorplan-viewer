@@ -186,6 +186,16 @@ canvas { display: block; }
   pointer-events: none;
 }
 
+.touch-banner {
+  position: fixed; left: 50%; bottom: 18px;
+  transform: translateX(-50%);
+  width: max-content; max-width: calc(100% - 32px);
+  background: rgba(20, 24, 30, 0.85); color: #e8ecf1;
+  padding: 10px 16px; border-radius: 999px;
+  font-size: 13px; line-height: 1.5; text-align: center;
+  pointer-events: none; word-break: keep-all;
+}
+
 /* ---- 랜딩 ---- */
 .landing {
   height: 100%; overflow-y: auto;
