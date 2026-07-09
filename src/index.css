@@ -61,6 +61,8 @@ canvas { display: block; }
 }
 .editor-actions .primary { background: #2f6fed; color: #fff; }
 .editor-actions .primary:hover { background: #4a83f2; }
+.editor-actions .primary.customer { background: #3d6b57; }
+.editor-actions .primary.customer:hover { background: #4a7f68; }
 .editor-actions .ghostbtn { background: rgba(255,255,255,0.1); color: #f0f3f7; }
 .editor-actions .ghostbtn:hover { background: rgba(255,255,255,0.18); }
 
@@ -221,6 +223,18 @@ canvas { display: block; }
 }
 .floor-switch button:hover { background: rgba(40, 46, 56, 0.85); }
 .floor-switch button.on { background: #3d6b57; border-color: #3d6b57; font-weight: 700; }
+
+/* 고객 체험 시뮬레이션 배지 */
+.preview-badge {
+  position: fixed; top: 16px; left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 220px);
+  background: rgba(38, 76, 62, 0.9); color: #cfe9db;
+  border: 1px solid rgba(122, 194, 160, 0.5);
+  padding: 9px 16px; border-radius: 999px;
+  font-size: 13px; text-align: center;
+  pointer-events: none; word-break: keep-all;
+}
 
 /* 어드민이 비공개 층을 미리볼 때 상단 배지 */
 .restricted-badge {

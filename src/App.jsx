@@ -61,7 +61,7 @@ function Viewer() {
   const [customItems, setCustomItems] = useState({}) // 사용자 정의 가구 타입 (내보내기에 포함)
   const [error, setError] = useState(null)
   const [locked, setLocked] = useState(false)
-  const [view, setView] = useState(VIEWER_ONLY ? 'walk' : 'plan') // 'plan'=어드민 도면 / 'walk'=3D 체험
+  const [view, setView] = useState(VIEWER_ONLY ? 'walk' : 'plan') // 'plan'=어드민 도면 / 'walk'=어드민 3D / 'preview'=고객 시점 시뮬레이션
   const { prompt, tone } = useSyncExternalStore(subscribeHud, getHudSnapshot)
   const sceneName = useRef('office')
 
@@ -104,11 +104,22 @@ function Viewer() {
   const level = doc?.levels[active] ?? null
   const scene = level?.scene ?? null
   const items = level?.items ?? null
-  // 고객에게 보이는 층 목록 (어드민은 전부)
+  // 고객 시점 여부: 실제 고객 모드거나, 어드민의 '고객 체험' 시뮬레이션
+  const isCustomerView = VIEWER_ONLY || view === 'preview'
+  // 고객에게 보이는 층 목록 (어드민 3D는 전부)
   const visibleLevels = useMemo(
-    () => (doc ? doc.levels.map((lv, i) => ({ ...lv, index: i })).filter(lv => !VIEWER_ONLY || !lv.restricted) : []),
-    [doc],
+    () => (doc ? doc.levels.map((lv, i) => ({ ...lv, index: i })).filter(lv => !isCustomerView || !lv.restricted) : []),
+    [doc, isCustomerView],
   )
+
+  // 고객 체험 진입: 고객과 동일하게 첫 공개 층에서 시작 (비공개 층에 있었다면 강제 이동)
+  const enterPreview = useCallback(() => {
+    if (doc && doc.levels[active]?.restricted) {
+      const first = doc.levels.findIndex(lv => !lv.restricted)
+      if (first >= 0) setActive(first)
+    }
+    setView('preview')
+  }, [doc, active])
 
   const updateLevel = useCallback(fn => {
     setDoc(d => ({ ...d, levels: d.levels.map((lv, i) => (i === active ? fn(lv) : lv)) }))
@@ -248,9 +259,19 @@ function Viewer() {
 
   if (error) return <div className="overlay"><div className="panel"><h1>로드 실패</h1><p>{error}</p></div></div>
   if (!sceneData || !catalogMerged) return <div className="overlay"><div className="panel"><p>로딩중…</p></div></div>
-  // 고객 모드인데 공개된 층이 하나도 없는 경우
-  if (VIEWER_ONLY && visibleLevels.length === 0) {
-    return <div className="overlay"><div className="panel"><h1>{doc.name}</h1><p>지금은 둘러볼 수 있는 층이 없습니다.</p></div></div>
+  // 공개된 층이 하나도 없는 경우 — 고객은 안내만, 어드민 미리보기는 복귀 버튼 제공
+  if (isCustomerView && visibleLevels.length === 0) {
+    return (
+      <div className="overlay">
+        <div className="panel">
+          <h1>{doc.name}</h1>
+          <p>지금은 둘러볼 수 있는 층이 없습니다.</p>
+          {view === 'preview' && (
+            <button className="panel-btn" onClick={() => setView('plan')}>에디터로 돌아가기 (Tab)</button>
+          )}
+        </div>
+      </div>
+    )
   }
 
   if (view === 'plan') {
@@ -267,6 +288,7 @@ function Viewer() {
         itemsApi={itemsApi}
         sceneApi={sceneApi}
         onEnter3D={() => setView('walk')}
+        onEnterPreview={enterPreview}
         onExport={exportScene}
         onImport={importScene}
       />
@@ -281,16 +303,23 @@ function Viewer() {
           className={lv.index === active ? 'on' : ''}
           onClick={() => { setActive(lv.index); document.exitPointerLock?.() }}
         >
-          {lv.name}{!VIEWER_ONLY && lv.restricted ? ' 🔒' : ''}
+          {lv.name}{!isCustomerView && lv.restricted ? ' 🔒' : ''}
         </button>
       ))}
     </div>
   )
 
   // 어드민이 비공개 층을 미리보는 중임을 명확히 — 고객용 투어에선 이 층 자체가 목록에 없다
-  const restrictedBadge = !VIEWER_ONLY && level?.restricted && (
+  const restrictedBadge = !isCustomerView && level?.restricted && (
     <div className="restricted-badge">
       🔒 고객 비공개 층 — 고객용 3D 투어에는 나타나지 않습니다 (어드민 미리보기)
+    </div>
+  )
+
+  // 고객 체험 시뮬레이션 중 표시 (실제 고객 화면엔 없음)
+  const previewBadge = view === 'preview' && (
+    <div className="preview-badge">
+      👁 고객 체험 — 실제 고객에게 보이는 그대로입니다 · Tab = 에디터로
     </div>
   )
 
@@ -306,6 +335,7 @@ function Viewer() {
         </Canvas>
         {floorSwitch}
         {restrictedBadge}
+        {previewBadge}
         <div className="touch-banner">
           한 손가락 회전 · 두 손가락 확대/이동 — 1인칭 걷기 투어는 데스크톱에서 열려요
         </div>
@@ -333,7 +363,9 @@ function Viewer() {
             <p>화면 클릭 = 시작</p>
             <p className="keys">WASD 이동 · 마우스 시선 · Shift 달리기 · E 상호작용 · ESC 해제</p>
             {!VIEWER_ONLY && (
-              <button className="panel-btn" onClick={() => setView('plan')}>2D 도면으로 (Tab)</button>
+              <button className="panel-btn" onClick={() => setView('plan')}>
+                {view === 'preview' ? '에디터로 돌아가기 (Tab)' : '2D 도면으로 (Tab)'}
+              </button>
             )}
           </div>
         </div>
@@ -341,6 +373,7 @@ function Viewer() {
 
       {floorSwitch}
       {restrictedBadge}
+      {previewBadge}
 
       <Minimap scene={sceneData} items={items} catalog={catalogMerged} />
 

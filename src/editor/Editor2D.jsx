@@ -7,7 +7,7 @@ import { zonePoints, zoneCentroid } from '../lib/zone.js'
 // 2D 탑뷰 도면 에디터. 도면 좌표(cm, +z=아래)가 SVG 좌표와 1:1 — 변환 없음.
 const SNAP = 5 // cm
 
-export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, items, catalog, catalogApi, itemsApi, sceneApi, onEnter3D, onExport, onImport }) {
+export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, items, catalog, catalogApi, itemsApi, sceneApi, onEnter3D, onEnterPreview, onExport, onImport }) {
   const [tool, setTool] = useState('select') // 'select' | 'wall' | 'zone'
   const [selected, setSelected] = useState(null) // { kind: 'item'|'zone'|'wall', id }
   const [cursor, setCursor] = useState(null)     // 도면 좌표 (벽/구역 미리보기용)
@@ -318,6 +318,7 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
             {confirmReset ? '정말 초기화?' : '새 도면'}
           </button>
           <button className="primary" onClick={onEnter3D}>▶ 3D로 체험 (Tab)</button>
+          <button className="primary customer" title="비공개 층을 숨긴, 실제 고객 화면 그대로의 미리보기" onClick={onEnterPreview}>👁 고객 체험</button>
         </div>
       </div>
 
