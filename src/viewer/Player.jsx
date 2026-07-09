@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { resolveCircle } from '../lib/collision.js'
+import { pointInZone } from '../lib/zone.js'
 import { CM, deg } from '../lib/units.js'
 import { itemObjects, findEntryFromHit } from '../lib/interact.js'
 import { setPrompt } from '../lib/hud.js'
@@ -16,6 +17,32 @@ const REACH = 2.2         // 상호작용 사거리 m
 
 const UP = new THREE.Vector3(0, 1, 0)
 const CENTER = new THREE.Vector2(0, 0)
+
+// 시작 지점이 금지구역 안이거나 벽·가구에 박혀 있으면(어드민이 마커 위에 구역·가구를 얹은 경우)
+// 나선 탐색으로 가장 가까운 안전한 지점으로 자동 조정한다. 유저가 갇힌 채 시작하는 일 방지.
+function safeSpawn(scene, colliders, sp) {
+  const zones = scene.zones ?? []
+  const floors = scene.floors ?? []
+  const ok = (x, z) => {
+    if (zones.some(zn => pointInZone(x, z, zn))) return false
+    if (floors.length && !floors.some(f => x >= f.x && x <= f.x + f.w && z >= f.z && z <= f.z + f.d)) return false // 건물 밖 방지
+    if (colliders) {
+      const p = resolveCircle({ x: x * CM, z: z * CM }, RADIUS, colliders.segments, colliders.boxes)
+      if (Math.hypot(p.x - x * CM, p.z - z * CM) > 0.03) return false // 벽·가구·구역 경계에 밀림
+    }
+    return true
+  }
+  if (ok(sp.x, sp.z)) return sp
+  for (let r = 40; r <= 3000; r += 40) {       // 40cm씩 반경 확장
+    for (let k = 0; k < 16; k++) {             // 16방위
+      const a = (k / 16) * Math.PI * 2
+      const x = Math.round(sp.x + r * Math.cos(a))
+      const z = Math.round(sp.z + r * Math.sin(a))
+      if (ok(x, z)) return { ...sp, x, z }
+    }
+  }
+  return sp // 안전 지점을 못 찾으면 원본 유지 (설계상 도달 어려움)
+}
 
 // 3D는 "체험 전용" — 편집(집기/배치)은 2D 도면 에디터가 담당한다.
 export function Player({ scene, colliders }) {
@@ -65,11 +92,11 @@ export function Player({ scene, colliders }) {
 
   useEffect(() => {
     if (import.meta.env.DEV) window.__camera = camera // 자동 테스트용 (prod 제외)
-    const sp = scene.spawn ?? { x: 100, z: 100, yawDeg: 0 }
+    const sp = safeSpawn(scene, colliders, scene.spawn ?? { x: 100, z: 100, yawDeg: 0 })
     camera.position.set(sp.x * CM, EYE, sp.z * CM)
     camera.rotation.set(0, deg(sp.yawDeg ?? 0), 0, 'YXZ')
     seatedRef.current = null
-  }, [scene, camera])
+  }, [scene, colliders, camera])
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.05)
