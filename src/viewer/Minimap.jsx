@@ -42,10 +42,6 @@ export function Minimap({ scene, items, catalog }) {
           <rect key={i} x={f.x} y={f.z} width={f.w} height={f.d} fill="#3d434c" />
         ))}
 
-        {(scene.zones ?? []).map(zn => (
-          <rect key={zn.id} x={zn.x} y={zn.z} width={zn.w} height={zn.d} fill="rgba(214,69,69,0.4)" stroke="#d64545" strokeWidth="4" />
-        ))}
-
         {items.map(it => {
           const c = catalog.items[it.catalogId]
           if (!c) return null
@@ -59,6 +55,11 @@ export function Minimap({ scene, items, catalog }) {
             </g>
           )
         })}
+
+        {/* 금지구역: 고객 미니맵에선 벽과 같은 톤의 막힌 덩어리 — 가구 위에 그려 내부를 가린다 */}
+        {(scene.zones ?? []).map(zn => (
+          <rect key={zn.id} x={zn.x} y={zn.z} width={zn.w} height={zn.d} fill="#cdd6e0" />
+        ))}
 
         {(scene.walls ?? []).map((wall, i) => <MiniWall key={i} wall={wall} />)}
 

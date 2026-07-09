@@ -70,7 +70,7 @@
     { "x": 1050, "z": 450, "w": 450, "d": 550, "material": "wood" }
   ],
   "zones": [
-    { "id": "zone-construction", "x": 60, "z": 700, "w": 200, "d": 200 }
+    { "id": "zone-construction", "x": 15, "z": 700, "w": 245, "d": 200 }
   ],
   "lights": [
     { "x": 1160, "z": 215 }, { "x": 1380, "z": 215 },

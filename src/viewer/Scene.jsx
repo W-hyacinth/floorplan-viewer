@@ -38,14 +38,16 @@ export function SceneRoot({ scene, catalog }) {
         </mesh>
       ))}
 
-      {/* 출입금지 구역: 고객에게 이유가 보이게 붉은 반투명 판 */}
+      {/* 출입금지 구역: 고객에겐 그냥 막힌 벽 덩어리 — 금지구역임을 드러내지 않는다 */}
       {(scene.zones ?? []).map(zn => (
         <mesh
           key={zn.id}
-          position={[(zn.x + zn.w / 2) * CM, 0.015, (zn.z + zn.d / 2) * CM]}
+          position={[(zn.x + zn.w / 2) * CM, ((scene.wallHeight ?? 250) / 2) * CM, (zn.z + zn.d / 2) * CM]}
+          castShadow
+          receiveShadow
         >
-          <boxGeometry args={[zn.w * CM, 0.03, zn.d * CM]} />
-          <meshStandardMaterial color="#d64545" transparent opacity={0.3} />
+          <boxGeometry args={[zn.w * CM, (scene.wallHeight ?? 250) * CM, zn.d * CM]} />
+          <meshStandardMaterial color={WALL_COLOR} />
         </mesh>
       ))}
 
@@ -58,10 +60,23 @@ export function SceneRoot({ scene, catalog }) {
       ))}
 
       {(scene.items ?? []).map(item => (
-        <Item key={item.id} item={item} cat={catalog.items[item.catalogId]} />
+        <Item
+          key={item.id}
+          item={item}
+          cat={catalog.items[item.catalogId]}
+          interactable={!inAnyZone(item.position, scene.zones)}
+        />
       ))}
     </group>
   )
+}
+
+// 금지구역 내부 가구는 벽 덩어리에 가려진다 — 상호작용(E)·조명도 함께 꺼야 존재가 새지 않는다
+function inAnyZone(pos, zones) {
+  for (const zn of zones ?? []) {
+    if (pos.x >= zn.x && pos.x <= zn.x + zn.w && pos.z >= zn.z && pos.z <= zn.z + zn.d) return true
+  }
+  return false
 }
 
 // 태양광: 씬 크기에 맞춰 그림자 절두체를 산출 (고정 ±12m는 큰 씬에서 그림자가 잘린다)
@@ -111,14 +126,14 @@ function Floor({ f, wallHeight, ceiling }) {
   )
 }
 
-function Item({ item, cat }) {
+function Item({ item, cat, interactable = true }) {
   const groupRef = useRef()
   const lightRef = useRef()
   const shadeRef = useRef()
-  const isLamp = !!cat?.interactions?.toggle
+  const isLamp = !!cat?.interactions?.toggle && interactable
 
   useEffect(() => {
-    if (!groupRef.current) return
+    if (!groupRef.current || !interactable) return
     return registerItemObject(item.id, {
       item,
       cat,
@@ -131,7 +146,7 @@ function Item({ item, cat }) {
           }
         : undefined,
     })
-  }, [item, cat, isLamp])
+  }, [item, cat, isLamp, interactable])
 
   if (!cat) return null
   const { w, d, h } = cat.size
