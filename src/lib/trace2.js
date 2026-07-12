@@ -316,6 +316,11 @@ export async function detectWalls2(src, underlay, debug = false) {
       // 실측 띠가 RIDGE_MIN_T_CM보다 얇으면 벽이 아니라 심볼 위 경계/개구부다.
       const tCm = measureThickness(structural, w, h, s) * cmPerPx
       if (tCm < RIDGE_MIN_T_CM) continue
+      // 벽 두께 상한을 크게 넘는 실측 = 교차부·블롭 위 조각(벽 아님) — 클램프 말고 폐기
+      if (tCm > MAX_T_CM * 1.2) continue
+      // 두께 대비 길이가 띠 꼴이 아니면 블롭(네트워크에 융합된 글자 슬래브 등) 위 경계.
+      // 성분 필터는 닫힘이 심볼을 벽 네트워크에 이어붙이면 무력해서 국소 형상으로 판정.
+      if (lenCm < tCm * 1.5) continue
       const t = Math.round(Math.min(MAX_T_CM, Math.max(MIN_T_CM, tCm)))
       const c = (s.c + 0.5) * cmPerPx
       const p1 = s.a * cmPerPx
@@ -492,13 +497,30 @@ function structuralMask(wall, raw, lum, lo, hi, w, h, cmPerPx) {
       if (y < h - 1 && wall[i + w] && !seen[i + w]) { seen[i + w] = 1; stack.push(i + w) }
     }
     const maxDim = Math.max(x2 - x1, y2 - y1) + 1
-    // 선형 심볼 판정은 표본 중앙값 두께로 — 면적/최장변 평균은 점선 체인에 글자 블롭이
-    // 섞인 합성물이 부풀려 통과한다(보정에 따라 통과 여부가 널뛰던 원인)
-    const step = Math.max(1, (px.length / 24) | 0)
-    const ths = []
-    for (let t2 = 0; t2 < px.length; t2 += step) ths.push(pxThickness(wall, w, h, px[t2]))
-    ths.sort((q, r3) => q - r3)
-    if (ths[(ths.length / 2) | 0] < minThick) continue // 점선·문 호선 등 선형 심볼
+    // 선형 심볼 판정은 주축 방향 '열 질량'의 중앙값(길이 가중)으로.
+    // 픽셀(면적) 가중 통계는 점선 라인에 글자 블롭이 붙은 합성물에서 블롭이 지배해
+    // 통과시킨다(-20% 보정에서만 나타나던 미해명 t45 가짜 벽의 원인).
+    const horiz = (x2 - x1) >= (y2 - y1)
+    // 열 '합산 질량'은 나란한 이중 라인(점선 두 줄)이 문턱을 넘는다 — 연속 런만 인정
+    const colPx = new Map()
+    for (const i of px) {
+      const c2 = horiz ? (i % w) : ((i / w) | 0)
+      let arr = colPx.get(c2)
+      if (!arr) { arr = []; colPx.set(c2, arr) }
+      arr.push(horiz ? ((i / w) | 0) : (i % w))
+    }
+    const runs = []
+    for (const arr of colPx.values()) {
+      arr.sort((q, r3) => q - r3)
+      let best = 1, cur = 1
+      for (let t2 = 1; t2 < arr.length; t2++) {
+        if (arr[t2] === arr[t2 - 1] + 1) { cur++; if (cur > best) best = cur }
+        else cur = 1
+      }
+      runs.push(best)
+    }
+    runs.sort((q, r3) => q - r3)
+    if (runs[(runs.length / 2) | 0] < minThick) continue // 점선·문 호선 등 선형 심볼
     if (maxDim >= minSide) for (const i of px) out[i] = 1
     else smallThick.push(px) // 크기 미달이지만 띠 두께는 있는 조각 — 근접 구제 후보
   }
@@ -864,7 +886,8 @@ function mergeSegs(walls) {
           A.p1 = Math.min(A.p1, B.p1)
           A.p2 = Math.max(A.p2, B.p2)
           A.c = main.c
-          A.t = Math.max(A.t, B.t)
+          // 두께는 주(긴) 세그먼트의 것 — max를 취하면 교차부의 두꺼운 조각이 본벽을 오염
+          A.t = main.t
           list.splice(j, 1)
           changed = true
           break outer
