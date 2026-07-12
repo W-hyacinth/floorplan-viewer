@@ -133,7 +133,109 @@ export async function detectWalls(src, underlay, debug = false) {
         : { from: { x: r(underlay.x + s.p1), z: r(underlay.z + s.c) }, to: { x: r(underlay.x + s.p2), z: r(underlay.z + s.c) }, thickness: s.t })
     }
   }
-  return debug ? walls : pruneToStructure(walls)
+  if (debug) return walls
+  const res = pruneToStructure(walls)
+  completeWallLines(res, mask, w, h, cmPerPx, underlay, mergeGap)
+  return res
+}
+
+// 문 옆 잔여 벽 보완: 검출된 벽 '선' 위를 마스크로 재주사해, 직교 벽이나 기존 구간에
+// 붙어 있는 미검출 토막(문~코너 사이 8~80cm)을 추가한다. 이 크기대는 길이 문턱으로는
+// 글자와 구분이 불가능하지만, '이미 확정된 벽 선 위 + 구조에 접함'이라는 위치 제약이
+// 대신 걸러준다. 문 개구부는 마스크에 벽 픽셀이 없어 메워지지 않는다.
+function completeWallLines(walls, mask, w, h, cmPerPx, underlay, mergeGapPx) {
+  const isV = s => s.from.x === s.to.x
+  const lines = new Map()
+  for (const s of walls) {
+    const key = `${isV(s) ? 'v' : 'h'}${Math.round((isV(s) ? s.from.x : s.from.z) / 4)}`
+    if (!lines.has(key)) lines.set(key, s)
+  }
+  const span = (o, vertical) => (vertical
+    ? [Math.min(o.from.z, o.to.z), Math.max(o.from.z, o.to.z)]
+    : [Math.min(o.from.x, o.to.x), Math.max(o.from.x, o.to.x)])
+  const added = []
+  for (const ref of lines.values()) {
+    const vertical = isV(ref)
+    const c = vertical ? ref.from.x : ref.from.z
+    const t = ref.thickness
+    const cPx = Math.round((c - (vertical ? underlay.x : underlay.z)) / cmPerPx)
+    const halfT = Math.max(1, Math.round(t / cmPerPx / 2))
+    const L1 = Math.max(0, cPx - halfT)
+    const L2 = Math.min((vertical ? w : h) - 1, cPx + halfT)
+    if (L2 - L1 < 2) continue
+    const k = Math.max(1, Math.floor((L2 - L1 + 1) / 3))
+    const N = vertical ? h : w
+    const at = (i, L) => (vertical ? mask[i * w + L] : mask[L * w + i])
+    const colOK = i => {
+      let ok = false
+      for (let L = L1; L < L1 + k; L++) if (at(i, L)) { ok = true; break }
+      if (!ok) return false
+      for (let L = L2 - k + 1; L <= L2; L++) if (at(i, L)) return true
+      return false
+    }
+    const runs = []
+    let s0 = -1
+    let last = -1
+    for (let i = 0; i <= N; i++) {
+      const ok = i < N && colOK(i)
+      if (ok) {
+        if (s0 < 0) s0 = i
+        else if (i - last - 1 > mergeGapPx) { runs.push([s0, last]); s0 = i }
+        last = i
+      }
+    }
+    if (s0 >= 0) runs.push([s0, last])
+    const off = vertical ? underlay.z : underlay.x
+    const same = walls.filter(o => isV(o) === vertical &&
+      Math.abs((isV(o) ? o.from.x : o.from.z) - c) <= 6)
+    const crossers = walls.filter(o => isV(o) !== vertical).filter(o => {
+      const [lo, hi] = span(o, !vertical)
+      return c >= lo - 15 && c <= hi + 15
+    }).map(o => ({ cc: vertical ? o.from.z : o.from.x, half: o.thickness / 2 + 2 }))
+    for (const [ra, rb] of runs) {
+      let a = off + ra * cmPerPx
+      let b = off + (rb + 1) * cmPerPx
+      if (b - a > 100) continue
+      // 직교 벽 몸통과 겹치는 부분을 빼고 남는 '가시 토막'으로 판단 —
+      // 벽 선이 직교 벽 몸통을 그냥 통과하는 지점은 가시 토막이 0이라 걸러진다
+      let va = a
+      let vb = b
+      for (const { cc, half } of crossers) {
+        if (cc - half <= va && va < cc + half) va = Math.min(cc + half, vb)
+        if (cc - half < vb && vb <= cc + half) vb = Math.max(cc - half, va)
+      }
+      if (vb - va < 2) continue
+      // 가시 토막의 벽다운 열 밀도 — 가구 모서리선이 벽 선을 스치는 지점(밀도 낮음) 배제
+      {
+        const pa = Math.max(0, Math.round((va - off) / cmPerPx))
+        const pb = Math.min(N - 1, Math.round((vb - off) / cmPerPx) - 1)
+        let on = 0
+        for (let i = pa; i <= pb; i++) if (colOK(i)) on++
+        if (pb < pa || on / (pb - pa + 1) < 0.6) continue
+      }
+      const covered = same.some(o => {
+        const [lo, hi] = span(o, vertical)
+        return Math.min(vb, hi) - Math.max(va, lo) > (vb - va) * 0.5
+      })
+      if (covered) continue
+      const near = crossers.filter(({ cc }) => cc > a - 15 && cc < b + 15)
+      const touchesSame = same.some(o => {
+        const [lo, hi] = span(o, vertical)
+        return Math.abs(va - hi) <= 4 || Math.abs(vb - lo) <= 4
+      })
+      if (!near.length && !touchesSame) continue
+      // 코너 마감: 인접 직교 벽의 중심선까지 끝을 연장(일반 벽과 같은 규약)
+      for (const { cc } of near) {
+        if (cc >= vb && cc <= vb + t + 4) vb = cc
+        if (cc <= va && cc >= va - t - 4) va = cc
+      }
+      if (vb - va < 8) continue
+      added.push(vertical
+        ? { from: { x: Math.round(c), z: Math.round(va) }, to: { x: Math.round(c), z: Math.round(vb) }, thickness: t }
+        : { from: { x: Math.round(va), z: Math.round(c) }, to: { x: Math.round(vb), z: Math.round(c) }, thickness: t })
+    }
+  }
+  walls.push(...added)
 }
 
 // 치수선·표제 등 '구조 밖' 요소 정리.
