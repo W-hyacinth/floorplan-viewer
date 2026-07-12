@@ -95,6 +95,7 @@ export async function detectWalls(src, underlay, debug = false) {
   const thinPx = Math.max(1, Math.round(MIN_T_CM / cmPerPx))
 
   const walls = []
+  const rejects = [] // 게이트 탈락했지만 라인 문맥으로 부활 가능한 후보(창새시 등)
   for (const vertical of [false, true]) {
     let bands = extractBands(mask, w, h, minLen, mergeGap, vertical)
     bands = fuseBands(bands, fuseDist, thinPx)
@@ -130,7 +131,19 @@ export async function detectWalls(src, underlay, debug = false) {
       if (!(fill >= SOLID_FILL ||
             hollowOk() ||
             contRatio(mask, w, bd, vertical) >= CONT_RATIO ||
-            isOutlinePair(mask, w, bd, vertical))) continue
+            isOutlinePair(mask, w, bd, vertical))) {
+        // 어느 정도 실한 탈락 후보는 라인 문맥 구제 대상으로 보관
+        // (fill 하한 0.44: 실측상 방 라벨 텍스트 0.37~0.4 vs 창새시 0.45+)
+        if (fill >= 0.44) {
+          const cc = (bd.start + bd.end + 1) / 2 * cmPerPx
+          const q1 = bd.a * cmPerPx
+          const q2 = (bd.b + 1) * cmPerPx
+          rejects.push(vertical
+            ? { from: { x: r(underlay.x + cc), z: r(underlay.z + q1) }, to: { x: r(underlay.x + cc), z: r(underlay.z + q2) }, thickness: Math.round(tCm) }
+            : { from: { x: r(underlay.x + q1), z: r(underlay.z + cc) }, to: { x: r(underlay.x + q2), z: r(underlay.z + cc) }, thickness: Math.round(tCm) })
+        }
+        continue
+      }
       segs.push({
         c: (bd.start + bd.end + 1) / 2 * cmPerPx,
         p1: bd.a * cmPerPx,
@@ -146,10 +159,78 @@ export async function detectWalls(src, underlay, debug = false) {
     }
   }
   if (debug) return walls
-  const res = pruneToStructure(walls)
+  lineRescue(walls, rejects) // 프룬 전에 구제 — 지원 벽이 살아 있고, 구제분이 코너 그래프를 복원한다
+  let res = pruneToStructure(walls)
+  res = mergeWallSegments(res)
   completeWallLines(res, mask, w, h, cmPerPx, underlay, mergeGap)
   detectGlazing(res, mask, w, h, cmPerPx, underlay)
   return res
+}
+
+// 라인 문맥 구제: 게이트 탈락 후보라도 (a) 건물 범위 안이고 (b) 채택 벽과 같은 선
+// (중심 ±8 또는 면일치 ±8)이거나, 같은 선의 동료 탈락 조각 합계가 250cm+ 이면 벽이다.
+// 창새시 구간(외벽 선 위에 줄지어 있음)을 살리고, 흩어진 텍스트 블롭은 못 넘는 기준.
+function lineRescue(walls, rejects) {
+  if (!walls.length || !rejects.length) return
+  const isV = s => s.from.x === s.to.x
+  const C = s => (isV(s) ? s.from.x : s.from.z)
+  const segLen = s => Math.abs(s.to.x - s.from.x) + Math.abs(s.to.z - s.from.z)
+  const xs = walls.filter(isV).map(C)
+  const zs = walls.filter(s => !isV(s)).map(C)
+  if (!xs.length || !zs.length) return
+  const maxT = Math.max(...walls.map(s => s.thickness))
+  const xr = [Math.min(...xs) - maxT, Math.max(...xs) + maxT]
+  const zr = [Math.min(...zs) - maxT, Math.max(...zs) + maxT]
+  const aligned = (a, b) => {
+    if (isV(a) !== isV(b)) return false
+    const ca = C(a)
+    const cb = C(b)
+    if (Math.abs(ca - cb) <= 8) return true
+    return Math.abs((ca - a.thickness / 2) - (cb - b.thickness / 2)) <= 8 ||
+      Math.abs((ca + a.thickness / 2) - (cb + b.thickness / 2)) <= 8
+  }
+  const added = []
+  for (const R of rejects) {
+    const c = C(R)
+    const inB = isV(R) ? (c >= xr[0] && c <= xr[1]) : (c >= zr[0] && c <= zr[1])
+    if (!inB) continue
+    if (walls.some(w2 => aligned(w2, R))) { added.push(R); continue }
+    // 동료 조각은 축 방향으로 서로 겹치지 않아야 한다(문·창으로 분리된 진짜 조각) —
+    // 라벨 텍스트가 만드는 겹침 부산물 띠들이 서로를 보증하는 것을 차단
+    const span = s => (isV(s)
+      ? [Math.min(s.from.z, s.to.z), Math.max(s.from.z, s.to.z)]
+      : [Math.min(s.from.x, s.to.x), Math.max(s.from.x, s.to.x)])
+    const [r1, r2] = span(R)
+    let peerLen = segLen(R)
+    for (const o of rejects) {
+      if (o === R || !aligned(R, o)) continue
+      const [o1, o2] = span(o)
+      const ov = Math.min(r2, o2) - Math.max(r1, o1)
+      if (ov <= 0.2 * Math.min(r2 - r1, o2 - o1)) peerLen += segLen(o)
+    }
+    if (peerLen >= 250) added.push(R)
+  }
+  walls.push(...added)
+}
+
+// 전체 벽 목록에 대해 방향별로 동일선 잇기·중복 흡수를 한 번 더 적용(구제 조각 병합용)
+function mergeWallSegments(walls) {
+  const isV = s => s.from.x === s.to.x
+  const out = []
+  for (const vertical of [false, true]) {
+    const segs = walls.filter(s => isV(s) === vertical).map(s => ({
+      c: vertical ? s.from.x : s.from.z,
+      p1: vertical ? Math.min(s.from.z, s.to.z) : Math.min(s.from.x, s.to.x),
+      p2: vertical ? Math.max(s.from.z, s.to.z) : Math.max(s.from.x, s.to.x),
+      t: s.thickness,
+    }))
+    for (const s of joinCollinear(segs)) {
+      out.push(vertical
+        ? { from: { x: Math.round(s.c), z: Math.round(s.p1) }, to: { x: Math.round(s.c), z: Math.round(s.p2) }, thickness: Math.round(s.t) }
+        : { from: { x: Math.round(s.p1), z: Math.round(s.c) }, to: { x: Math.round(s.p2), z: Math.round(s.c) }, thickness: Math.round(s.t) })
+    }
+  }
+  return out
 }
 
 // 벽 속 유리 구간(창·유리벽) 식별 → openings[{type:'window'}]로 등록.
