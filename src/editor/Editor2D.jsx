@@ -330,7 +330,12 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     reader.onload = () => {
       const img = new Image()
       img.onload = () => {
-        const widthCm = 1000 // 기본 10m — 아래 입력으로 보정
+        // 파일명에 실제 폭 단서가 있으면 자동 보정 (예: "사무실_폭1200cm.png", "plan-1500cm.png", "w1240")
+        const m = file.name.match(/폭\s*(\d{3,5})\s*cm/) ||
+          file.name.match(/(\d{3,5})\s*cm/) ||
+          file.name.match(/[wW](\d{3,5})/)
+        const hinted = m ? Number(m[1]) : 0
+        const widthCm = hinted >= 100 && hinted <= 10000 ? hinted : 1000 // 기본 10m — 아래 입력으로 보정
         sceneApi.setUnderlay({
           src: reader.result,
           x: 0, z: 0,
@@ -364,7 +369,9 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
       } else {
         sceneApi.setWalls(walls)
         setSelected(null)
-        setTraceInfo(`벽 ${walls.length}개 인식 — 잘못 잡힌 벽은 클릭해서 삭제하세요`)
+        setTraceInfo(walls.length < 8
+          ? `벽 ${walls.length}개 인식 — 벽이 적게 잡히면 실제 폭(cm) 보정이 정확한지 먼저 확인하세요 (보정이 작으면 얇은 내벽이 걸러집니다)`
+          : `벽 ${walls.length}개 인식 — 잘못 잡힌 벽은 클릭해서 삭제하세요`)
       }
     } catch (err) {
       setTraceInfo(`인식 실패: ${err.message}`)
