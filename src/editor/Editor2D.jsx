@@ -20,7 +20,10 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
   const svgRef = useRef(null)
   const fileRef = useRef(null)
   const imgRef = useRef(null)
-  const dragRef = useRef(null) // { kind:'item'|'zone'|'spawn', id, dx, dz }
+  const dragRef = useRef(null) // { kind:'item'|'zone'|'spawn'|'pan', ... }
+  const [view, setView] = useState(null) // null = 도면 전체 맞춤 / 값 = 줌·팬된 viewBox
+  const viewRef = useRef(null)           // 휠 연타 시 렌더 지연 없이 최신 뷰 참조
+  const spaceRef = useRef(false)
 
   const bounds = useMemo(() => {
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
@@ -35,7 +38,47 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     return { minX, maxX, minZ, maxZ }
   }, [scene])
   const M = 100
-  const viewBox = `${bounds.minX - M} ${bounds.minZ - M} ${bounds.maxX - bounds.minX + 2 * M} ${bounds.maxZ - bounds.minZ + 2 * M}`
+  const fitBox = {
+    x: bounds.minX - M, y: bounds.minZ - M,
+    w: bounds.maxX - bounds.minX + 2 * M, h: bounds.maxZ - bounds.minZ + 2 * M,
+  }
+  const fitRef = useRef(fitBox)
+  fitRef.current = fitBox
+  const vb = view ?? fitBox
+  const viewBox = `${vb.x} ${vb.y} ${vb.w} ${vb.h}`
+  const zoomPct = Math.round((fitBox.w / vb.w) * 100)
+
+  const applyView = nv => { viewRef.current = nv; setView(nv) }
+  // k > 1 = 축소, k < 1 = 확대. 앵커(도면 좌표) 고정 줌
+  const zoomAt = (px, py, k) => {
+    const v = viewRef.current ?? fitRef.current
+    const w = Math.min(Math.max(v.w * k, 150), fitRef.current.w * 4)
+    const kk = w / v.w
+    applyView({ x: px - (px - v.x) * kk, y: py - (py - v.y) * kk, w, h: v.h * kk })
+  }
+  const zoomStep = k => {
+    const v = viewRef.current ?? fitRef.current
+    zoomAt(v.x + v.w / 2, v.y + v.h / 2, k)
+  }
+  const resetView = () => { viewRef.current = null; setView(null) }
+
+  // 휠 줌(커서 기준) — preventDefault가 필요해 native non-passive로 부착
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const onWheel = e => {
+      e.preventDefault()
+      const rect = svg.getBoundingClientRect()
+      const v = viewRef.current ?? fitRef.current
+      const s = Math.min(rect.width / v.w, rect.height / v.h)
+      const px = v.x + (e.clientX - rect.left - (rect.width - v.w * s) / 2) / s
+      const py = v.y + (e.clientY - rect.top - (rect.height - v.h * s) / 2) / s
+      zoomAt(px, py, Math.pow(1.0015, e.deltaY))
+    }
+    svg.addEventListener('wheel', onWheel, { passive: false })
+    return () => svg.removeEventListener('wheel', onWheel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 벽 콜라이더(가구 제외) — 겹침 경고용, 3D와 동일 판정
   const wallSegs = useMemo(
@@ -74,9 +117,12 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     return { x: p.x, z: p.y }
   }
   const snap = v => Math.round(v / SNAP) * SNAP
+  // 휠클릭 또는 Space 홀드 = 팬 — 개체 핸들러는 양보하고 svg까지 버블시킨다
+  const isPan = e => e.button === 1 || spaceRef.current
 
   // ---- 포인터 ----
   const onItemDown = (e, it) => {
+    if (isPan(e)) return
     if (tool !== 'select') return
     e.stopPropagation()
     setSelected({ kind: 'item', id: it.id })
@@ -85,6 +131,7 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     capture(e)
   }
   const onZoneDown = (e, zn) => {
+    if (isPan(e)) return
     if (tool !== 'select') return
     e.stopPropagation()
     setSelected({ kind: 'zone', id: zn.id })
@@ -97,12 +144,14 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     capture(e)
   }
   const onVertexDown = (e, zn, idx) => {
+    if (isPan(e)) return
     e.stopPropagation()
     dragRef.current = { kind: 'zonevert', id: zn.id, idx }
     capture(e)
   }
   // 변 중간점 핸들 드래그 = 그 자리에 꼭짓점 삽입 후 바로 이동
   const onMidDown = (e, zn, idx) => {
+    if (isPan(e)) return
     e.stopPropagation()
     const p = toPlan(e)
     const pts = [...zn.points]
@@ -116,11 +165,13 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     sceneApi.updateZone(zn.id, { points: zn.points.filter((_, i) => i !== idx) })
   }
   const onWallDown = (e, idx) => {
+    if (isPan(e)) return
     if (tool !== 'select') return
     e.stopPropagation()
     setSelected({ kind: 'wall', id: idx })
   }
   const onSpawnDown = e => {
+    if (isPan(e)) return
     if (tool !== 'select') return
     e.stopPropagation()
     dragRef.current = { kind: 'spawn' }
@@ -131,6 +182,12 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
   }
 
   const onSvgDown = e => {
+    if (isPan(e)) {
+      e.preventDefault()
+      dragRef.current = { kind: 'pan', cx: e.clientX, cy: e.clientY, v: viewRef.current ?? fitRef.current }
+      capture(e)
+      return
+    }
     const p = toPlan(e)
     if (tool === 'wall') {
       const pt = { x: snap(p.x), z: snap(p.z) }
@@ -149,6 +206,13 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     setSelected(null)
   }
   const onSvgMove = e => {
+    if (dragRef.current?.kind === 'pan') {
+      const d = dragRef.current
+      const rect = svgRef.current.getBoundingClientRect()
+      const s = Math.min(rect.width / d.v.w, rect.height / d.v.h)
+      applyView({ x: d.v.x - (e.clientX - d.cx) / s, y: d.v.y - (e.clientY - d.cy) / s, w: d.v.w, h: d.v.h })
+      return
+    }
     const p = toPlan(e)
     if (tool !== 'select' || zoneStart) setCursor(p)
     const d = dragRef.current
@@ -223,9 +287,15 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
       if (e.code === 'Escape') {
         setWallStart(null); setZoneStart(null); setTool('select'); setSelected(null)
       }
+      if (e.code === 'Space') { spaceRef.current = true; e.preventDefault() }
     }
+    const onKeyUp = e => { if (e.code === 'Space') spaceRef.current = false }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKeyUp)
+    }
   })
 
   const addItem = cid => {
@@ -282,7 +352,7 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
         <span className="hint">
           {tool === 'wall' ? '클릭-클릭으로 벽 연속 그리기 · ESC 끝내기'
             : tool === 'zone' ? (zoneMsg ?? '클릭 = 닫힌 영역 자동 감지(다각형) · 드래그 = 사각형 지정')
-            : '드래그 이동 · R 회전 · Delete 삭제 · 빨강 = 겹침'}
+            : '드래그 이동 · R 회전 · Delete 삭제 · 휠 줌 · Space/휠클릭 드래그 팬 · 빨강 = 겹침'}
           {importErr && <em className="import-err"> — 불러오기 실패: {importErr}</em>}
         </span>
         <div className="editor-actions">
@@ -435,6 +505,12 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
         </div>
 
         <div className="editor-main">
+          <div className="zoom-ctl">
+            <button onClick={() => zoomStep(1 / 1.3)} title="확대 (휠 위)">＋</button>
+            <span>{zoomPct}%</span>
+            <button onClick={() => zoomStep(1.3)} title="축소 (휠 아래)">－</button>
+            <button className="fit" onClick={resetView} disabled={!view} title="도면 전체가 보이게 되돌리기">전체</button>
+          </div>
           <svg
             ref={svgRef}
             viewBox={viewBox}

@@ -113,8 +113,23 @@ canvas { display: block; }
 }
 .side-sel button.danger { background: rgba(180, 60, 60, 0.75); }
 
-.editor-main { flex: 1; min-width: 0; }
+.editor-main { flex: 1; min-width: 0; position: relative; }
 .editor-main svg { width: 100%; height: 100%; display: block; background: #30353d; touch-action: none; }
+
+.zoom-ctl {
+  position: absolute; right: 12px; bottom: 12px; z-index: 5;
+  display: flex; align-items: center; gap: 4px;
+  background: rgba(20, 23, 28, 0.78); border-radius: 8px; padding: 4px 6px;
+}
+.zoom-ctl button {
+  width: 28px; height: 28px; border: none; border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12); color: #f0f3f7;
+  cursor: pointer; font-size: 15px; line-height: 1;
+}
+.zoom-ctl button:hover { background: rgba(255, 255, 255, 0.22); }
+.zoom-ctl button:disabled { opacity: 0.4; cursor: default; }
+.zoom-ctl .fit { width: auto; padding: 0 10px; font-size: 12px; }
+.zoom-ctl span { color: #c8cdd6; font-size: 12px; min-width: 46px; text-align: center; }
 
 .palette-card {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
