@@ -392,7 +392,10 @@ function completeWallLines(walls, mask, w, h, cmPerPx, underlay, mergeGapPx) {
     for (const [ra, rb] of runs) {
       let a = off + ra * cmPerPx
       let b = off + (rb + 1) * cmPerPx
-      if (b - a > 100) continue
+      // 상한 250cm: 문옆 토막(8~40)뿐 아니라 벽 위에 얹힌 가전·위생기구 심볼
+      // (싱크대+가스레인지 ~100cm+)로 분단된 구간도 메운다 — 문 개구부는 마스크에
+      // 픽셀이 없어 벽다운 열 밀도(0.6)를 못 넘으므로 메워지지 않는다
+      if (b - a > 250) continue
       // 직교 벽 몸통과 겹치는 부분을 빼고 남는 '가시 토막'으로 판단 —
       // 벽 선이 직교 벽 몸통을 그냥 통과하는 지점은 가시 토막이 0이라 걸러진다
       let va = a
@@ -649,7 +652,9 @@ function extractBands(mask, w, h, minLen, mergeGap, vertical) {
       for (const bd of active) {
         const ov = Math.min(b, bd.b) - Math.max(a, bd.a) + 1
         // 겹침이 좁은 쪽의 80% + 넓은 쪽의 50% 이상이어야 같은 띠 —
-        // 기둥(넓음)→얇은 벽 전이에서 띠가 기둥 폭으로 고정된 채 자라며 fill이 붕괴하는 것 방지
+        // 기둥(넓음)→얇은 벽 전이에서 띠가 기둥 폭으로 고정된 채 자라며 fill이 붕괴하는 것 방지.
+        // (알려진 트레이드오프: CAD 중공벽의 해칭 파편이 외곽선 띠에 합류하지 못해 재구성됨 —
+        //  CAD 중공벽 GT를 하드셋에 추가해 정답 기반으로 후속 조정 예정)
         if (ov >= 0.8 * Math.min(b - a + 1, bd.b - bd.a + 1) &&
             ov >= 0.5 * Math.max(b - a + 1, bd.b - bd.a + 1)) { hit = bd; break }
       }
