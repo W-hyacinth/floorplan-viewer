@@ -3,7 +3,7 @@ import { buildColliders, obbOverlapsObb, obbIntersectsSegment } from '../lib/col
 import { CM, deg } from '../lib/units.js'
 import { detectEnclosedArea } from '../lib/area.js'
 import { zonePoints, zoneCentroid } from '../lib/zone.js'
-import { detectWalls } from '../lib/trace.js'
+import { detectWalls, autoCalibrateWidth } from '../lib/trace.js'
 
 // 2D 탑뷰 도면 에디터. 도면 좌표(cm, +z=아래)가 SVG 좌표와 1:1 — 변환 없음.
 const SNAP = 5 // cm
@@ -335,16 +335,34 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
           file.name.match(/(\d{3,5})\s*cm/) ||
           file.name.match(/[wW](\d{3,5})/)
         const hinted = m ? Number(m[1]) : 0
-        const widthCm = hinted >= 100 && hinted <= 10000 ? hinted : 1000 // 기본 10m — 아래 입력으로 보정
-        sceneApi.setUnderlay({
+        const hintOk = hinted >= 100 && hinted <= 10000
+        const widthCm = hintOk ? hinted : 1000 // 기본 10m — 아래 입력으로 보정
+        const ratio = img.naturalHeight / img.naturalWidth
+        const base = {
           src: reader.result,
           x: 0, z: 0,
           widthCm,
-          heightCm: Math.round(widthCm * (img.naturalHeight / img.naturalWidth)),
-          ratio: img.naturalHeight / img.naturalWidth,
+          heightCm: Math.round(widthCm * ratio),
+          ratio,
           opacity: 0.5,
           visible: true,
-        })
+        }
+        sceneApi.setUnderlay(base)
+        if (!hintOk) {
+          // 파일명 힌트가 없으면 자동 보정: 시드 스캔(벽 수 정점) + 문 폭(85cm) 미세 역산
+          setTraceInfo('실제 폭 자동 추정 중… (도면이 크면 수 초)')
+          ;(async () => {
+            try {
+              const est = await autoCalibrateWidth(base.src)
+              if (est && est >= 300 && est <= 10000 && est !== widthCm) {
+                sceneApi.setUnderlay({ ...base, widthCm: est, heightCm: Math.round(est * ratio) })
+                setTraceInfo(`실제 폭 자동 추정: ${est}cm — 부정확하면 직접 수정하세요`)
+              } else {
+                setTraceInfo(null)
+              }
+            } catch { setTraceInfo(null) }
+          })()
+        }
       }
       img.src = reader.result
     }

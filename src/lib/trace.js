@@ -391,7 +391,13 @@ function pruneToStructure(walls) {
       const len = Math.abs(w2.to.x - w2.from.x) + Math.abs(w2.to.z - w2.from.z)
       return w2.thickness >= 18 && len >= 200
     })
-    if ((c.h && c.v) || strong) kept.push(...c.idx)
+    // 총 길이 400cm+ 성분도 유지: 실전 도면은 외벽 조각이 게이트에서 떨어지면 내벽 무리가
+    // '코너 없는 고아'로 연쇄 사멸한다. 소파 이중선(~240)·여백 표제(~255)는 이 기준 미달.
+    const totalLen = c.idx.reduce((s2, i) => {
+      const w2 = walls[i]
+      return s2 + Math.abs(w2.to.x - w2.from.x) + Math.abs(w2.to.z - w2.from.z)
+    }, 0)
+    if ((c.h && c.v) || strong || totalLen >= 400) kept.push(...c.idx)
   }
   if (!kept.length) return walls // 코너가 전혀 없으면 판단 보류 — 원본 유지
   let res = kept.map(i => walls[i])
@@ -601,7 +607,13 @@ function joinCollinear(segs) {
       for (let j = i + 1; j < list.length; j++) {
         const A = list[i], B = list[j]
         const ov = Math.min(A.p2, B.p2) - Math.max(A.p1, B.p1)
-        const joinable = Math.abs(A.c - B.c) <= 6 && Math.abs(A.t - B.t) <= 10 && -ov <= JOIN_GAP_CM
+        // 면 일치: 벽 두께가 변해도(기둥 접합 등) 한쪽 면은 평평하게 이어지는 게 보통 —
+        // 중심선이 어긋나도 어느 한 면이 맞으면 같은 벽의 연속으로 본다(실전 도면 조각화 대응)
+        const edgeFlush =
+          Math.abs((A.c - A.t / 2) - (B.c - B.t / 2)) <= 6 ||
+          Math.abs((A.c + A.t / 2) - (B.c + B.t / 2)) <= 6
+        const joinable = (Math.abs(A.c - B.c) <= 6 || edgeFlush) && -ov <= JOIN_GAP_CM &&
+          (Math.abs(A.t - B.t) <= 10 || edgeFlush)
         const overlapping = Math.abs(A.c - B.c) < (A.t + B.t) / 2 &&
           ov >= 0.5 * Math.min(A.p2 - A.p1, B.p2 - B.p1)
         if (!joinable && !overlapping) continue
@@ -609,7 +621,7 @@ function joinCollinear(segs) {
         A.p1 = Math.min(A.p1, B.p1)
         A.p2 = Math.max(A.p2, B.p2)
         A.c = main.c
-        A.t = Math.max(A.t, B.t)
+        A.t = main.t
         list.splice(j, 1)
         changed = true
         break outer
@@ -666,6 +678,139 @@ function findContentBox(img) {
     w: Math.min(img.naturalWidth, fx(x2 + padX)) - Math.max(0, fx(x1 - padX)),
     h: Math.min(img.naturalHeight, fx(y2 + padY)) - Math.max(0, fx(y1 - padY)),
   }
+}
+
+// 같은 선상 벽 조각 사이 '문 개구부' 폭 중앙값(cm). 엄격 필터: 양쪽 조각 100cm+ &
+// 두께 유사(같은 벽의 연속) & 갭 40~200cm — 창 구간·미검출 틈 같은 잡갭을 배제한다.
+function medianDoorGap(walls) {
+  const isV = s => s.from.x === s.to.x
+  const len = s => Math.abs(s.to.x - s.from.x) + Math.abs(s.to.z - s.from.z)
+  const gaps = []
+  for (let i = 0; i < walls.length; i++) {
+    for (let j = i + 1; j < walls.length; j++) {
+      const A = walls[i], B = walls[j]
+      if (isV(A) !== isV(B)) continue
+      if (len(A) < 100 || len(B) < 100) continue
+      if (Math.abs(A.thickness - B.thickness) > 6) continue
+      const cA = isV(A) ? A.from.x : A.from.z
+      const cB = isV(B) ? B.from.x : B.from.z
+      if (Math.abs(cA - cB) > 8) continue
+      const a2 = isV(A) ? Math.max(A.from.z, A.to.z) : Math.max(A.from.x, A.to.x)
+      const a1 = isV(A) ? Math.min(A.from.z, A.to.z) : Math.min(A.from.x, A.to.x)
+      const b1 = isV(B) ? Math.min(B.from.z, B.to.z) : Math.min(B.from.x, B.to.x)
+      const b2 = isV(B) ? Math.max(B.from.z, B.to.z) : Math.max(B.from.x, B.to.x)
+      const gap = Math.max(a1, b1) - Math.min(a2, b2)
+      if (gap > 40 && gap < 200) gaps.push(gap)
+    }
+  }
+  if (gaps.length < 3) return null
+  gaps.sort((a, b) => a - b)
+  return gaps[Math.floor(gaps.length / 2)]
+}
+
+// 실제 폭 자동 추정(파일명 힌트가 없을 때).
+// 1) 시드 스캔: 각 시드에서 인식을 돌리고 '구조 정합' 점수 = (두꺼운 구조 커버리지 ×
+//    두꺼운 구조 위 정밀도)로 채점한다. 과소 보정은 벽이 게이트에 걸려 커버리지가 죽고,
+//    과대 보정은 글자·가구가 벽으로 둔갑해 정밀도가 죽어 — 정답 근처에서만 정점이 선다.
+//    (벽 '개수'는 과대 보정 쪽으로 게임되므로 점수로 쓰지 않는다 — 실측으로 확인됨)
+// 2) 문 갭 보정: 정점 시드에서 문 개구부 중앙값이 표준 문폭 85cm가 되도록 미세 역산(±35% 한도).
+export async function autoCalibrateWidth(src) {
+  const img = await loadImage(src)
+  // 채점용 마스크(시드와 무관): detectWalls와 동일한 크롭·정규화·이진화
+  const crop = findContentBox(img)
+  const scale = MAX_SIDE / Math.max(crop.w, crop.h)
+  const w = Math.max(1, Math.round(crop.w * scale))
+  const h = Math.max(1, Math.round(crop.h * scale))
+  const cv = document.createElement('canvas')
+  cv.width = w
+  cv.height = h
+  const ctx = cv.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, w, h)
+  const d = ctx.getImageData(0, 0, w, h).data
+  const lum = new Float32Array(w * h)
+  for (let i = 0; i < w * h; i++) lum[i] = 0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2]
+  const sorted = Float32Array.from(lum).sort()
+  const lo = sorted[Math.floor(sorted.length * 0.05)]
+  const hi = sorted[Math.floor(sorted.length * 0.95)]
+  if (hi - lo < 30) return null
+  const thr = (lo + hi) / 2
+  let dark = 0
+  for (let i = 0; i < lum.length; i++) if (lum[i] < thr) dark++
+  const darkIsWall = dark <= lum.length / 2
+  const mask = new Uint8Array(w * h)
+  for (let i = 0; i < lum.length; i++) {
+    if ((lum[i] < thr) !== darkIsWall) continue
+    const ch = Math.max(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) - Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2])
+    if (ch <= MAX_CHROMA) mask[i] = 1
+  }
+  const thick = new Uint8Array(w * h)
+  for (let y = 2; y < h - 2; y++) {
+    for (let x = 2; x < w - 2; x++) {
+      if (!mask[y * w + x]) continue
+      let c = 0
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) c += mask[(y + dy) * w + (x + dx)]
+      if (c >= 22) thick[y * w + x] = 1
+    }
+  }
+  let thickN = 0
+  for (let i = 0; i < w * h; i++) thickN += thick[i]
+  if (thickN < 500) return null
+
+  const fullCmPerPx = wcm => wcm / img.naturalWidth
+  const scoreWalls = (walls, wcm) => {
+    const cmPerPx = (crop.w * fullCmPerPx(wcm)) / w
+    const offX = crop.x * fullCmPerPx(wcm)
+    const offZ = crop.y * fullCmPerPx(wcm)
+    const det = new Uint8Array(w * h)
+    for (const s of walls) {
+      const vert = s.from.x === s.to.x
+      const c = Math.round(((vert ? s.from.x : s.from.z) - (vert ? offX : offZ)) / cmPerPx)
+      const ht = Math.max(1, Math.round(s.thickness / cmPerPx / 2))
+      const a = Math.round((Math.min(vert ? s.from.z : s.from.x, vert ? s.to.z : s.to.x) - (vert ? offZ : offX)) / cmPerPx)
+      const b = Math.round((Math.max(vert ? s.from.z : s.from.x, vert ? s.to.z : s.to.x) - (vert ? offZ : offX)) / cmPerPx)
+      for (let i = Math.max(0, a); i <= Math.min((vert ? h : w) - 1, b); i++) {
+        for (let L = Math.max(0, c - ht); L <= Math.min((vert ? w : h) - 1, c + ht); L++) {
+          det[vert ? i * w + L : L * w + i] = 1
+        }
+      }
+    }
+    let detN = 0
+    let cov = 0
+    for (let i = 0; i < w * h; i++) {
+      if (det[i]) { detN++; if (thick[i]) cov++ }
+    }
+    if (!detN) return 0
+    return (cov / thickN) * (cov / detN) // 커버리지 × 정밀도
+  }
+
+  let best = null
+  const tryWidth = async wcm => {
+    const walls = await detectWalls(src, { x: 0, z: 0, widthCm: wcm })
+    const s = walls.length >= 6 ? scoreWalls(walls, wcm) : 0
+    if (!best || s > best.s) best = { wcm, s, walls }
+  }
+  for (const s of [700, 1100, 1700, 2600, 4000]) await tryWidth(s)
+  if (!best || best.s === 0) return null
+  // 정점이 이동하는 동안 근방을 반복 탐색(지역 정점 탈출, 최대 3라운드)
+  const tried = new Set()
+  for (let round = 0; round < 3; round++) {
+    const center = best.wcm
+    for (const f of [0.78, 1.28]) {
+      const wcm = Math.round(center * f / 10) * 10
+      if (!tried.has(wcm)) { tried.add(wcm); await tryWidth(wcm) }
+    }
+    if (best.wcm === center) break
+  }
+  const med = medianDoorGap(best.walls)
+  let est = best.wcm
+  if (med) est *= Math.max(0.65, Math.min(1.35, 85 / med))
+  return Math.round(est / 10) * 10
+}
+
+// (하위호환) 이전 이름 유지
+export function estimateWidthCm(walls, assumedWidthCm) {
+  const med = medianDoorGap(walls)
+  return med ? Math.round(assumedWidthCm * (85 / med) / 10) * 10 : null
 }
 
 function loadImage(src) {
