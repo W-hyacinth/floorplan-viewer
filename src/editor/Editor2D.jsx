@@ -21,6 +21,7 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
   const [tracing, setTracing] = useState(false)
   const [confirmTrace, setConfirmTrace] = useState(false)
   const [traceInfo, setTraceInfo] = useState(null)
+  const [pendingUnderlay, setPendingUnderlay] = useState(null) // 배치가 있는 층에 새 밑그림 → 경고 후 진행
   const svgRef = useRef(null)
   const fileRef = useRef(null)
   const imgRef = useRef(null)
@@ -409,7 +410,10 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
             onChange={e => {
               const f = e.target.files?.[0]
               e.target.value = ''
-              if (f) loadUnderlay(f)
+              if (!f) return
+              const hasContent = (scene.walls?.length ?? 0) + items.length + (scene.zones?.length ?? 0) > 0
+              if (hasContent) setPendingUnderlay(f)
+              else loadUnderlay(f)
             }}
           />
           <button className="ghostbtn" onClick={() => imgRef.current?.click()}>도면 이미지</button>
@@ -553,6 +557,29 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
         </div>
 
         <div className="editor-main">
+          {pendingUnderlay && (
+            <div className="underlay-confirm">
+              <b>새 밑그림 불러오기</b>
+              <p>
+                이 층에는 벽 {scene.walls?.length ?? 0} · 가구 {items.length} · 구역 {(scene.zones ?? []).length}개가 있어요.
+                새 도면 기반으로 다시 시작하면 기존 배치는 사라집니다.
+              </p>
+              <div className="row">
+                <button
+                  className="primary"
+                  onClick={() => {
+                    sceneApi.clearLevel()
+                    setSelected(null); setWallStart(null); setZoneStart(null); setTraceInfo(null)
+                    resetView()
+                    loadUnderlay(pendingUnderlay)
+                    setPendingUnderlay(null)
+                  }}
+                >초기화 후 불러오기</button>
+                <button onClick={() => { loadUnderlay(pendingUnderlay); setPendingUnderlay(null) }}>배치 유지, 밑그림만 교체</button>
+                <button onClick={() => setPendingUnderlay(null)}>취소</button>
+              </div>
+            </div>
+          )}
           <div className="zoom-ctl">
             <button onClick={() => zoomStep(1 / 1.3)} title="확대 (휠 위)">＋</button>
             <input

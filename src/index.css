@@ -139,6 +139,22 @@ canvas { display: block; }
 
 .trace-info { display: block; margin-top: 6px; color: #a8b3c2; font-size: 11px; line-height: 1.4; }
 
+.underlay-confirm {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 6; width: min(460px, calc(100% - 32px));
+  background: #1d2129; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 10px;
+  padding: 14px 16px; color: #e8ecf2; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.underlay-confirm b { font-size: 14px; }
+.underlay-confirm p { margin: 8px 0 12px; font-size: 12.5px; line-height: 1.5; color: #b9c2cf; }
+.underlay-confirm .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.underlay-confirm button {
+  border: none; border-radius: 6px; padding: 7px 10px; font-size: 12px;
+  cursor: pointer; background: rgba(255, 255, 255, 0.12); color: #f0f3f7;
+}
+.underlay-confirm button.primary { background: #2f6fed; color: #fff; }
+.underlay-confirm button:hover { filter: brightness(1.15); }
+
 .palette-card {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   background: rgba(255, 255, 255, 0.06);

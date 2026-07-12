@@ -187,11 +187,12 @@ function Viewer() {
     removeZone: id => patchScene(s => ({ ...s, zones: (s.zones ?? []).filter(z => z.id !== id) })),
     setSpawn: spawn => patchScene(s => ({ ...s, spawn })),
     setUnderlay: underlay => patchScene(s => ({ ...s, underlay })),
+    clearLevel: () => updateLevel(lv => ({ ...lv, scene: EMPTY_LEVEL_SCENE(), items: [] })),
     reset: () => {
       setDoc({ name: '새 도면', levels: [{ id: 'lv0', name: '1층', restricted: false, scene: EMPTY_LEVEL_SCENE(), items: [] }] })
       setActive(0)
     },
-  }), [patchScene])
+  }), [patchScene, updateLevel])
 
   const levelsApi = useMemo(() => ({
     setActive,
