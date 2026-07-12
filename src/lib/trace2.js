@@ -299,12 +299,14 @@ export async function detectWalls2(src, underlay, debug = false) {
 
   // ── 7) 리지 → 축정렬 벽 세그먼트 ──
   const walls = []
+  const maxTpx = Math.round(MAX_T_CM / cmPerPx)
   for (const [k, pxs] of wallR) {
     const a = Math.floor(k / 100000), b = k % 100000
     const aIn = keep.has(a), bIn = keep.has(b)
     if (!(aIn || bIn)) continue
-    // 픽셀들을 마스크로 → 밴드 추출(가로/세로)
-    const segs = fitSegments(pxs, w)
+    // 소유권 경계는 밴드 안에서 비스듬히 만나 계단으로 조각난다(긴 가로벽 부분검출의
+    // 원인) — 각 리지 픽셀을 구조 띠의 중심선으로 스냅한 뒤 피팅한다.
+    const segs = fitSegments(snapToBandCenter(pxs, structural, w, h, maxTpx), w)
     for (const s of segs) {
       const lenCm = s.len * cmPerPx
       // 길이 최종 판정은 mergeSegs 후에 — 워터셰드 경계는 지그재그라 리지가 짧은
@@ -490,7 +492,13 @@ function structuralMask(wall, raw, lum, lo, hi, w, h, cmPerPx) {
       if (y < h - 1 && wall[i + w] && !seen[i + w]) { seen[i + w] = 1; stack.push(i + w) }
     }
     const maxDim = Math.max(x2 - x1, y2 - y1) + 1
-    if (px.length / maxDim < minThick) continue // 점선·문 호선 등 선형 심볼
+    // 선형 심볼 판정은 표본 중앙값 두께로 — 면적/최장변 평균은 점선 체인에 글자 블롭이
+    // 섞인 합성물이 부풀려 통과한다(보정에 따라 통과 여부가 널뛰던 원인)
+    const step = Math.max(1, (px.length / 24) | 0)
+    const ths = []
+    for (let t2 = 0; t2 < px.length; t2 += step) ths.push(pxThickness(wall, w, h, px[t2]))
+    ths.sort((q, r3) => q - r3)
+    if (ths[(ths.length / 2) | 0] < minThick) continue // 점선·문 호선 등 선형 심볼
     if (maxDim >= minSide) for (const i of px) out[i] = 1
     else smallThick.push(px) // 크기 미달이지만 띠 두께는 있는 조각 — 근접 구제 후보
   }
@@ -753,6 +761,32 @@ function fitSegments(pxs, w) {
       alive[p[1]] = 0
     }
     out.push({ vertical: best.o === 1, c: Math.round(cSum / best.pts.length), a, b, len: b - a + 1 })
+  }
+  return out
+}
+
+// 리지 픽셀을 구조 띠의 중심선으로 투영: 두께 방향(짧은 런)의 중점으로 스냅.
+// 비구조 픽셀·교차부(양방향 모두 두꺼움)는 그대로 둔다.
+function snapToBandCenter(pxs, structural, w, h, maxTpx) {
+  const LIM = 90
+  const out = new Array(pxs.length)
+  for (let k = 0; k < pxs.length; k++) {
+    const i = pxs[k]
+    if (!structural[i]) { out[k] = i; continue }
+    const x = i % w, y = (i / w) | 0
+    let a = x
+    while (a > 0 && x - a < LIM && structural[y * w + a - 1]) a--
+    let b = x
+    while (b < w - 1 && b - x < LIM && structural[y * w + b + 1]) b++
+    let c = y
+    while (c > 0 && y - c < LIM && structural[(c - 1) * w + x]) c--
+    let d = y
+    while (d < h - 1 && d - y < LIM && structural[(d + 1) * w + x]) d++
+    const runH = b - a + 1, runV = d - c + 1
+    if (Math.min(runH, runV) > maxTpx) { out[k] = i; continue }
+    out[k] = runV <= runH
+      ? Math.round((c + d) / 2) * w + x
+      : y * w + Math.round((a + b) / 2)
   }
   return out
 }
