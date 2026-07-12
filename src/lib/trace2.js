@@ -318,9 +318,10 @@ export async function detectWalls2(src, underlay, debug = false) {
       if (tCm < RIDGE_MIN_T_CM) continue
       // 벽 두께 상한을 크게 넘는 실측 = 교차부·블롭 위 조각(벽 아님) — 클램프 말고 폐기
       if (tCm > MAX_T_CM * 1.2) continue
-      // 두께 대비 길이가 띠 꼴이 아니면 블롭(네트워크에 융합된 글자 슬래브 등) 위 경계.
-      // 성분 필터는 닫힘이 심볼을 벽 네트워크에 이어붙이면 무력해서 국소 형상으로 판정.
-      if (lenCm < tCm * 1.5) continue
+      // 두께 대비 길이가 띠 꼴이 아니면 블롭(네트워크에 융합된 글자 슬래브·카운터) 위 경계.
+      // 단, 같은 띠가 세그먼트 너머로 이어지면 벽이다 — 한 물리 벽이 라벨쌍별로 쪼개져
+      // 짧아진 두꺼운 실전 벽 토막을 삼키지 않도록(성분 필터는 닫힘 융합에 무력).
+      if (lenCm < tCm * 1.5 && !bandContinues(structural, w, h, s, Math.round(tCm / cmPerPx))) continue
       const t = Math.round(Math.min(MAX_T_CM, Math.max(MIN_T_CM, tCm)))
       const c = (s.c + 0.5) * cmPerPx
       const p1 = s.a * cmPerPx
@@ -785,6 +786,23 @@ function fitSegments(pxs, w) {
     out.push({ vertical: best.o === 1, c: Math.round(cSum / best.pts.length), a, b, len: b - a + 1 })
   }
   return out
+}
+
+// 세그먼트 라인이 양끝 너머로도 구조 띠 위를 달리는지(한쪽이라도 70%+ 점유) 검사
+function bandContinues(structural, w, h, s, ext) {
+  if (ext < 3) ext = 3
+  const occ = (p1, p2) => {
+    let n = 0, hit = 0
+    for (let p = p1; p <= p2; p++) {
+      const x = s.vertical ? s.c : p
+      const y = s.vertical ? p : s.c
+      if (x < 0 || y < 0 || x >= w || y >= h) continue
+      n++
+      if (structural[y * w + x]) hit++
+    }
+    return n ? hit / n : 0
+  }
+  return occ(s.a - ext, s.a - 1) >= 0.7 || occ(s.b + 1, s.b + ext) >= 0.7
 }
 
 // 리지 픽셀을 구조 띠의 중심선으로 투영: 두께 방향(짧은 런)의 중점으로 스냅.
