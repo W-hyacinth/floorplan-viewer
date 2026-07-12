@@ -225,6 +225,44 @@ export async function detectWalls2(src, underlay, debug = false) {
   // ── 4) 벽 픽셀 소유권: 벽 마스크 안으로도 확장 ──
   bfsExpand(label, wall, w, h, true)
 
+  // ── 4b) label 0 사각지대 흡수 ──
+  // 크기 미달로 방이 못 된 비벽 조각(새시 이중선 사이 띠·가구 옆 틈)을 이웃 라벨
+  // 다수결로 흡수한다 — 0으로 남으면 그 경계의 라벨쌍이 아예 안 생겨 새시 창이
+  // 리지를 만들 기회조차 없다. (벽 소유권이 정해진 뒤라 다수결이 가능.)
+  {
+    const seen0 = new Uint8Array(N)
+    for (let s = 0; s < N; s++) {
+      if (label[s] || wall[s] || seen0[s]) continue
+      const px = []
+      stack.length = 0
+      stack.push(s)
+      seen0[s] = 1
+      while (stack.length) {
+        const i = stack.pop()
+        px.push(i)
+        const x = i % w, y = (i / w) | 0
+        if (x > 0 && !wall[i - 1] && !label[i - 1] && !seen0[i - 1]) { seen0[i - 1] = 1; stack.push(i - 1) }
+        if (x < w - 1 && !wall[i + 1] && !label[i + 1] && !seen0[i + 1]) { seen0[i + 1] = 1; stack.push(i + 1) }
+        if (y > 0 && !wall[i - w] && !label[i - w] && !seen0[i - w]) { seen0[i - w] = 1; stack.push(i - w) }
+        if (y < h - 1 && !wall[i + w] && !label[i + w] && !seen0[i + w]) { seen0[i + w] = 1; stack.push(i + w) }
+      }
+      const votes = new Map()
+      for (const i of px) {
+        const x = i % w, y = (i / w) | 0
+        if (x > 0 && label[i - 1] >= 1) votes.set(label[i - 1], (votes.get(label[i - 1]) || 0) + 1)
+        if (x < w - 1 && label[i + 1] >= 1) votes.set(label[i + 1], (votes.get(label[i + 1]) || 0) + 1)
+        if (y > 0 && label[i - w] >= 1) votes.set(label[i - w], (votes.get(label[i - w]) || 0) + 1)
+        if (y < h - 1 && label[i + w] >= 1) votes.set(label[i + w], (votes.get(label[i + w]) || 0) + 1)
+      }
+      let best = 0, bestN = 0
+      for (const [l, n2] of votes) if (n2 > bestN) { bestN = n2; best = l }
+      if (best >= 1) {
+        for (const i of px) label[i] = best
+        compPx.set(best, (compPx.get(best) || 0) + px.length)
+      }
+    }
+  }
+
   // ── 5) 라벨쌍 경계 리지 (벽 리지=벽 / 바닥 리지=문·개구부) ──
   let { wallR, floorR } = extractRidges(label, structural, w, h)
 
@@ -336,14 +374,43 @@ export async function detectWalls2(src, underlay, debug = false) {
       // 두께: 세그먼트 표본점들에서 수직 방향 벽 마스크 폭 실측(0 포함 중앙값).
       // 실측 띠가 RIDGE_MIN_T_CM보다 얇으면 벽이 아니라 심볼 위 경계/개구부다.
       const tCm = measureThickness(structural, w, h, s) * cmPerPx
-      if (tCm < RIDGE_MIN_T_CM) continue
-      // 벽 두께 상한을 크게 넘는 실측 = 교차부·블롭 위 조각(벽 아님) — 클램프 말고 폐기
-      if (tCm > MAX_T_CM * 1.2) continue
-      // 두께 대비 길이가 띠 꼴이 아니면 블롭(네트워크에 융합된 글자 슬래브·카운터) 위 경계.
-      // 단, 같은 띠가 세그먼트 너머로 이어지면 벽이다 — 한 물리 벽이 라벨쌍별로 쪼개져
-      // 짧아진 두꺼운 실전 벽 토막을 삼키지 않도록(성분 필터는 닫힘 융합에 무력).
-      if (lenCm < tCm * 1.5 && !bandContinues(structural, w, h, s, Math.round(tCm / cmPerPx))) continue
-      const t = Math.round(Math.min(MAX_T_CM, Math.max(MIN_T_CM, tCm)))
+      let effT = tCm
+      if (tCm < RIDGE_MIN_T_CM) {
+        // 벽 띠는 없지만 창일 수 있다: 경계 주변 수직 프로파일에 평행 세선 ≥2 = 새시.
+        // (새시 세선은 1~2px라 두께 게이트를 원리적으로 못 넘는다 — 진단 7/13.
+        //  문은 개구부에 잉크가 없어 시그니처 미달로 자동 배제.)
+        const winCm = windowStrip(raw, w, h, s, cmPerPx) * cmPerPx
+        if (winCm < 10 || winCm > MAX_T_CM || lenCm < MIN_WALL_LEN_CM * 2) continue
+        effT = winCm
+      } else {
+        // 벽 두께 상한을 크게 넘는 실측 = 교차부·블롭 위 조각(벽 아님) — 클램프 말고 폐기
+        if (tCm > MAX_T_CM * 1.2) continue
+        // 두께 대비 길이가 띠 꼴이 아니면 블롭(네트워크에 융합된 글자 슬래브·카운터) 위 경계.
+        // 단, 같은 띠가 세그먼트 너머로 이어지면 벽이다 — 한 물리 벽이 라벨쌍별로 쪼개져
+        // 짧아진 두꺼운 실전 벽 토막을 삼키지 않도록(성분 필터는 닫힘 융합에 무력).
+        if (lenCm < tCm * 1.5 && !bandContinues(structural, w, h, s, Math.round(tCm / cmPerPx))) continue
+      }
+      const t = Math.round(Math.min(MAX_T_CM, Math.max(MIN_T_CM, effT)))
+      const c = (s.c + 0.5) * cmPerPx
+      const p1 = s.a * cmPerPx
+      const p2 = (s.b + 1) * cmPerPx
+      walls.push(s.vertical
+        ? { from: { x: r2i(offX + c), z: r2i(offZ + p1) }, to: { x: r2i(offX + c), z: r2i(offZ + p2) }, thickness: t }
+        : { from: { x: r2i(offX + p1), z: r2i(offZ + c) }, to: { x: r2i(offX + p2), z: r2i(offZ + c) }, thickness: t })
+    }
+  }
+  // ── 7b) 바닥 리지의 창 승격 ──
+  // 병합되지 않은(=안장 얕은, 진짜 분리) 쌍이 바닥 경계로 만나는 자리 중
+  // 평행 세선 ≥2가 놓인 좁은 띠 = 새시 창. 문은 잉크가 없어 시그니처 미달.
+  for (const [k, pxs] of floorR) {
+    const a = Math.floor(k / 100000), b = k % 100000
+    if (!(keep.has(a) || keep.has(b))) continue
+    for (const s of fitSegments(pxs, w)) {
+      const lenCm = s.len * cmPerPx
+      if (lenCm < MIN_WALL_LEN_CM * 2) continue
+      const winCm = windowStrip(raw, w, h, s, cmPerPx) * cmPerPx
+      if (winCm < 10 || winCm > MAX_T_CM) continue
+      const t = Math.round(Math.max(MIN_T_CM, winCm))
       const c = (s.c + 0.5) * cmPerPx
       const p1 = s.a * cmPerPx
       const p2 = (s.b + 1) * cmPerPx
@@ -803,6 +870,45 @@ function fitSegments(pxs, w) {
     out.push({ vertical: best.o === 1, c: Math.round(cSum / best.pts.length), a, b, len: b - a + 1 })
   }
   return out
+}
+
+// 창(새시) 시그니처: 세그먼트 표본점들의 수직 프로파일(±32cm)에서 가는 잉크 선
+// (두께 ≤8cm) 개수를 센다. 중앙값 ≥2면 창 — 반환값은 선들이 걸친 스팬(px, =창틀 폭).
+// 두꺼운 잉크 런이 걸리면 그 표본은 실격(-99) — 벽·가구 옆 오탐 방지.
+function windowStrip(raw, w, h, s, cmPerPx) {
+  const half = Math.round(32 / cmPerPx)
+  const maxLineT = Math.max(2, Math.round(8 / cmPerPx))
+  const n = Math.min(15, s.len)
+  const counts = []
+  const spans = []
+  for (let k = 0; k < n; k++) {
+    const p = Math.round(s.a + ((k + 0.5) / n) * (s.b - s.a))
+    const x0 = s.vertical ? s.c : p
+    const y0 = s.vertical ? p : s.c
+    let cnt = 0, run = 0, first = 99999, last = -99999
+    for (let d = -half; d <= half + 1; d++) {
+      const x = s.vertical ? x0 + d : x0
+      const y = s.vertical ? y0 : y0 + d
+      const v = d <= half && x >= 0 && y >= 0 && x < w && y < h && raw[y * w + x] ? 1 : 0
+      if (v) {
+        run++
+        if (d < first) first = d
+        last = d
+      } else {
+        if (run > 0 && run <= maxLineT) cnt++
+        else if (run > maxLineT) cnt = -99
+        run = 0
+      }
+    }
+    counts.push(cnt)
+    spans.push(last >= first ? last - first + 1 : 0)
+  }
+  counts.sort((q, r3) => q - r3)
+  // 30퍼센타일 — 새시는 연속선이라 표본 대부분이 2줄을 보지만, 확장 점선 쌍(듀티 ~60%)은
+  // 표본의 40%가 빈 구간에 떨어져 탈락한다(중앙값이면 점선 쌍이 창으로 오승격 — 실측 결함)
+  if (counts[(counts.length * 0.3) | 0] < 2) return 0
+  spans.sort((q, r3) => q - r3)
+  return spans[(spans.length / 2) | 0]
 }
 
 // 세그먼트 라인이 양끝 너머로도 구조 띠 위를 달리는지(한쪽이라도 70%+ 점유) 검사
