@@ -12,7 +12,7 @@
 // - 채움율 검사 비율<12: 분양 평면도의 방이름+mm치수 텍스트 블롭(세장비 8~12)이 통과하던 문제
 
 const MAX_SIDE = 1200      // 처리 해상도 상한(px)
-const MIN_LEN_CM = 60      // 이보다 짧은 띠는 벽으로 안 봄(글자 획·가구 선 배제)
+const MIN_LEN_CM = 40      // 이보다 짧은 띠는 벽으로 안 봄(문 옆 40cm 스텁은 벽이다 — 글자는 판정 게이트가 거름)
 const MIN_T_CM = 6         // 띠 추출 두께 하한(가는 선은 융합 후보로만)
 const MAX_T_CM = 45        // 벽 두께 상한(색면·가구 채움 배제)
 const MERGE_GAP_CM = 12    // 같은 줄에서 이 이하 끊김은 노이즈로 이음(문 개구부 60cm+는 유지)
@@ -90,7 +90,8 @@ export async function detectWalls(src, underlay, debug = false) {
     for (const bd of bands) {
       // 끝단 정리: 치수 보조선·치수 숫자가 벽과 한 줄로 이어져 스팬을 오염시키는 경우 —
       // 양끝의 '벽답지 않은' 자잘한 조각을 잘라내고 실한 구간 사이만 남긴다
-      trimBandEnds(mask, w, bd, vertical, mergeGap, Math.max(3, Math.round(minLen * 0.8)))
+      // 실한 구간 문턱: 치수 숫자+치수선 조각(~34px)보다 크게 — 픽셀 하한 42를 둔다
+      trimBandEnds(mask, w, bd, vertical, mergeGap, Math.max(42, Math.round(minLen * 0.8)))
       if (bd.b - bd.a + 1 < minLen) continue
       const tCm = (bd.end - bd.start + 1) * cmPerPx
       const lenCm = (bd.b - bd.a + 1) * cmPerPx
