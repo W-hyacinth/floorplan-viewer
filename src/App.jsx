@@ -178,6 +178,7 @@ function Viewer() {
   const patchScene = useCallback(fn => updateLevel(lv => ({ ...lv, scene: fn(lv.scene) })), [updateLevel])
   const sceneApi = useMemo(() => ({
     addWall: wall => patchScene(s => ({ ...s, walls: [...(s.walls ?? []), wall] })),
+    setWalls: walls => patchScene(s => ({ ...s, walls })),
     removeWall: idx => patchScene(s => ({ ...s, walls: (s.walls ?? []).filter((_, i) => i !== idx) })),
     addZone: zone => patchScene(s => ({ ...s, zones: [...(s.zones ?? []), zone] })),
     updateZone: (id, patch) => patchScene(s => ({

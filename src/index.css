@@ -137,6 +137,8 @@ canvas { display: block; }
 .zoom-ctl input.pct:focus { outline: 1px solid #2f6fed; background: rgba(255, 255, 255, 0.14); }
 .zoom-ctl .unit { color: #c8cdd6; font-size: 12px; margin-right: 2px; }
 
+.trace-info { display: block; margin-top: 6px; color: #a8b3c2; font-size: 11px; line-height: 1.4; }
+
 .palette-card {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   background: rgba(255, 255, 255, 0.06);

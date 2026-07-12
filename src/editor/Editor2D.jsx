@@ -3,6 +3,7 @@ import { buildColliders, obbOverlapsObb, obbIntersectsSegment } from '../lib/col
 import { CM, deg } from '../lib/units.js'
 import { detectEnclosedArea } from '../lib/area.js'
 import { zonePoints, zoneCentroid } from '../lib/zone.js'
+import { detectWalls } from '../lib/trace.js'
 
 // 2D 탑뷰 도면 에디터. 도면 좌표(cm, +z=아래)가 SVG 좌표와 1:1 — 변환 없음.
 const SNAP = 5 // cm
@@ -17,6 +18,9 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
   const [importErr, setImportErr] = useState(null)
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmLevelDel, setConfirmLevelDel] = useState(false)
+  const [tracing, setTracing] = useState(false)
+  const [confirmTrace, setConfirmTrace] = useState(false)
+  const [traceInfo, setTraceInfo] = useState(null)
   const svgRef = useRef(null)
   const fileRef = useRef(null)
   const imgRef = useRef(null)
@@ -341,6 +345,32 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     reader.readAsDataURL(file)
   }
 
+  // 밑그림에서 벽 자동 인식 — 기존 벽이 있으면 2클릭 확인 후 전체 교체
+  const runTrace = async () => {
+    if (tracing || !scene.underlay) return
+    if ((scene.walls?.length ?? 0) > 0 && !confirmTrace) {
+      setConfirmTrace(true)
+      setTimeout(() => setConfirmTrace(false), 2500)
+      return
+    }
+    setConfirmTrace(false)
+    setTracing(true)
+    setTraceInfo(null)
+    try {
+      const walls = await detectWalls(scene.underlay.src, scene.underlay)
+      if (!walls.length) {
+        setTraceInfo('벽을 찾지 못했어요 — 실제 폭(cm) 보정과 도면 대비를 확인하세요')
+      } else {
+        sceneApi.setWalls(walls)
+        setSelected(null)
+        setTraceInfo(`벽 ${walls.length}개 인식 — 잘못 잡힌 벽은 클릭해서 삭제하세요`)
+      }
+    } catch (err) {
+      setTraceInfo(`인식 실패: ${err.message}`)
+    }
+    setTracing(false)
+  }
+
   const selectedItem = selected?.kind === 'item' ? items.find(i => i.id === selected.id) : null
   const selectedItemCat = selectedItem ? catalog.items[selectedItem.catalogId] : null
   const underlay = scene.underlay
@@ -473,6 +503,17 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
                 </button>
                 <button className="danger" onClick={() => sceneApi.setUnderlay(null)}>제거</button>
               </div>
+              <div className="sel-row">
+                <button
+                  className={confirmTrace ? 'danger' : ''}
+                  disabled={tracing}
+                  title="밑그림의 어두운 선을 벽으로 자동 추출합니다 — 실제 폭(cm)을 먼저 맞춘 뒤 실행하세요"
+                  onClick={runTrace}
+                >
+                  {tracing ? '인식 중…' : confirmTrace ? `기존 벽 ${scene.walls?.length ?? 0}개 교체?` : '🧱 벽 자동 인식'}
+                </button>
+              </div>
+              {traceInfo && <small className="trace-info">{traceInfo}</small>}
             </div>
           )}
           <div className="side-sel">
