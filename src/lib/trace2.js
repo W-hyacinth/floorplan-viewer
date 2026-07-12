@@ -67,6 +67,27 @@ export async function detectWalls2(src, underlay, debug = false) {
     if (c <= MAX_CHROMA) raw[i] = 1
   }
 
+  // ── 1a') 두꺼운 암부 내부 = 바닥 재분류 ──
+  // 벽은 두께 MAX_T_CM 이하의 띠다. 양방향 모두 FURN_MIN_CM보다 두꺼운 어두운 영역
+  // (어두운 타일 바닥 방·솔리드 가구 블롭)의 내부는 벽일 수 없다 — raw에서 제거해
+  // 그 안에 분지·포켓이 형성되게 한다. (전역 이진화가 타일 바닥 방 전체를 벽으로
+  // 분류해 방이 라벨 0으로 죽던 한계의 처방. 성분·구조 수준 차감으로는 포켓 단계가
+  // wall 픽셀을 건너뛰지 못해 부족했다.)
+  const rF = Math.max(1, Math.round(FURN_MIN_CM / 2 / cmPerPx))
+  const thickCore = dilate(erode(raw, w, h, rF), w, h, rF)
+  for (let i = 0; i < N; i++) if (thickCore[i]) raw[i] = 0
+  // 중간회색 전용 열림: 벽은 잉크(어두움)지 중간회색이 아니다. 회색 픽셀만 모아
+  // 50cm 이상 두꺼운 영역(타일 바닥·회색 가구)을 바닥으로 재분류 — 위생기구가
+  // 타일 방을 75cm 미만 조각으로 쪼개도 잡힌다. CAD 해칭 벽 띠(~20cm)는 안전.
+  {
+    const grayThr2 = lo + 0.15 * (hi - lo) // 어두운 타일도 잉크보다는 밝다(잉크≈lo)
+    const midGray = new Uint8Array(N)
+    for (let i = 0; i < N; i++) if (raw[i] && lum[i] > grayThr2) midGray[i] = 1
+    const rG = Math.max(1, Math.round(25 / cmPerPx))
+    const grayCore = dilate(erode(midGray, w, h, rG), w, h, rG)
+    for (let i = 0; i < N; i++) if (grayCore[i]) raw[i] = 0
+  }
+
   // ── 1a) 닫힘(팽창→침식): 틈이 있는 부재를 벽 띠로 봉합 ──
   // 새시 창(fill~0.5의 가는 이중선+살) 틈으로 방 라벨이 새면 외부와 한 라벨이 되어
   // 그 벽의 리지가 통째로 사라진다(첫 벤치: 새시 recall 0.04의 원인).
@@ -534,11 +555,7 @@ function structuralMask(wall, raw, lum, lo, hi, w, h, cmPerPx) {
       if (px.some(i => prox[i])) for (const i of px) out[i] = 1
     }
   }
-  // 가구 ①: 양방향 모두 FURN_MIN_CM보다 두꺼운 블롭 — 닫힘 이전 raw에서 열림(침식→팽창)으로
-  // 코어를 찾아 제외한다(닫힘 후에는 벽에 붙은 가구가 벽 띠와 합쳐져 벽까지 도려내진다)
-  const rF = Math.max(1, Math.round(FURN_MIN_CM / 2 / cmPerPx))
-  const furn = dilate(erode(raw, w, h, rF), w, h, rF)
-  for (let i = 0; i < N; i++) if (furn[i]) out[i] = 0
+  // (두꺼운 블롭 가구는 1a'에서 raw 자체에서 제거됨 — 여기서는 톤 게이트만)
   // 가구 ②: 톤 게이트 — 잉크(벽)보다 확연히 밝은 회색 블롭(소파·수납·장롱 심볼).
   // raw 성분 단위로 평균 밝기를 재고, 어느 정도 몸집(최소변 25cm)이 있으면 제외.
   // 얇은 벽·새시 잉크는 어둡고, 주방 카운터급 준벽(짙은 회색)은 문턱 아래라 유지된다.
