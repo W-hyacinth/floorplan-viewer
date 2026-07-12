@@ -61,6 +61,13 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     zoomAt(v.x + v.w / 2, v.y + v.h / 2, k)
   }
   const resetView = () => { viewRef.current = null; setView(null) }
+  // 배율 직접 입력: pct% → viewBox 폭 = fit폭 × 100/pct (뷰 중앙 앵커, zoomAt이 클램프)
+  const [pctEdit, setPctEdit] = useState(null) // null = 표시 모드, 문자열 = 편집 중
+  const pctCancelRef = useRef(false)
+  const setZoomTo = pct => {
+    const v = viewRef.current ?? fitRef.current
+    zoomAt(v.x + v.w / 2, v.y + v.h / 2, (fitRef.current.w * 100 / pct) / v.w)
+  }
 
   // 휠 줌(커서 기준) — preventDefault가 필요해 native non-passive로 부착
   useEffect(() => {
@@ -507,7 +514,27 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
         <div className="editor-main">
           <div className="zoom-ctl">
             <button onClick={() => zoomStep(1 / 1.3)} title="확대 (휠 위)">＋</button>
-            <span>{zoomPct}%</span>
+            <input
+              className="pct"
+              type="text" inputMode="numeric"
+              value={pctEdit ?? String(zoomPct)}
+              title="배율 직접 입력 · Enter 적용 · ESC 취소"
+              onFocus={e => { setPctEdit(String(zoomPct)); e.target.select() }}
+              onChange={e => setPctEdit(e.target.value.replace(/[^0-9]/g, ''))}
+              onBlur={() => {
+                if (!pctCancelRef.current) {
+                  const n = Number(pctEdit)
+                  if (n > 0) setZoomTo(n)
+                }
+                pctCancelRef.current = false
+                setPctEdit(null)
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') { pctCancelRef.current = true; e.currentTarget.blur() }
+              }}
+            />
+            <span className="unit">%</span>
             <button onClick={() => zoomStep(1.3)} title="축소 (휠 아래)">－</button>
             <button className="fit" onClick={resetView} disabled={!view} title="도면 전체가 보이게 되돌리기">전체</button>
           </div>

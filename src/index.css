@@ -129,7 +129,13 @@ canvas { display: block; }
 .zoom-ctl button:hover { background: rgba(255, 255, 255, 0.22); }
 .zoom-ctl button:disabled { opacity: 0.4; cursor: default; }
 .zoom-ctl .fit { width: auto; padding: 0 10px; font-size: 12px; }
-.zoom-ctl span { color: #c8cdd6; font-size: 12px; min-width: 46px; text-align: center; }
+.zoom-ctl input.pct {
+  width: 44px; height: 28px; border: none; border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08); color: #f0f3f7;
+  text-align: center; font-size: 12px;
+}
+.zoom-ctl input.pct:focus { outline: 1px solid #2f6fed; background: rgba(255, 255, 255, 0.14); }
+.zoom-ctl .unit { color: #c8cdd6; font-size: 12px; margin-right: 2px; }
 
 .palette-card {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
