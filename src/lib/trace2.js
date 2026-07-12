@@ -299,7 +299,9 @@ export async function detectWalls2(src, underlay, debug = false) {
     }
     for (const [k, pxs] of openByPair) {
       const a = Math.floor(k / 100000), b = k % 100000
-      if (a < 2 || b < 2) continue
+      // 방-방뿐 아니라 방-외부(1) 병합도 허용: 치수선에 둘러싸인 여백 분지가
+      // 넓고 깊은 열린 인터페이스로 외부와 이어져 있으면 방이 아니라 바깥이다
+      if (b < 2 && a < 2) continue
       const maxRun = fitSegments(pxs, w).reduce((m2, s) => Math.max(m2, s.len), 0)
       if (maxRun * cmPerPx < MERGE_OPEN_CM) continue
       // 안장 검사: 경계 위 거리장 최대 = 실제 개구부 반폭. 문·문틈 '혀' 경계는 벽에
@@ -394,9 +396,10 @@ export async function detectWalls2(src, underlay, debug = false) {
       const c = (s.c + 0.5) * cmPerPx
       const p1 = s.a * cmPerPx
       const p2 = (s.b + 1) * cmPerPx
+      const win = tCm < RIDGE_MIN_T_CM // 창 시그니처로 승격된 세그먼트
       walls.push(s.vertical
-        ? { from: { x: r2i(offX + c), z: r2i(offZ + p1) }, to: { x: r2i(offX + c), z: r2i(offZ + p2) }, thickness: t }
-        : { from: { x: r2i(offX + p1), z: r2i(offZ + c) }, to: { x: r2i(offX + p2), z: r2i(offZ + c) }, thickness: t })
+        ? { from: { x: r2i(offX + c), z: r2i(offZ + p1) }, to: { x: r2i(offX + c), z: r2i(offZ + p2) }, thickness: t, win }
+        : { from: { x: r2i(offX + p1), z: r2i(offZ + c) }, to: { x: r2i(offX + p2), z: r2i(offZ + c) }, thickness: t, win })
     }
   }
   // ── 7b) 바닥 리지의 창 승격 ──
@@ -415,8 +418,8 @@ export async function detectWalls2(src, underlay, debug = false) {
       const p1 = s.a * cmPerPx
       const p2 = (s.b + 1) * cmPerPx
       walls.push(s.vertical
-        ? { from: { x: r2i(offX + c), z: r2i(offZ + p1) }, to: { x: r2i(offX + c), z: r2i(offZ + p2) }, thickness: t }
-        : { from: { x: r2i(offX + p1), z: r2i(offZ + c) }, to: { x: r2i(offX + p2), z: r2i(offZ + c) }, thickness: t })
+        ? { from: { x: r2i(offX + c), z: r2i(offZ + p1) }, to: { x: r2i(offX + c), z: r2i(offZ + p2) }, thickness: t, win: true }
+        : { from: { x: r2i(offX + p1), z: r2i(offZ + c) }, to: { x: r2i(offX + p2), z: r2i(offZ + c) }, thickness: t, win: true })
     }
   }
   const merged = mergeSegs(walls).filter(s =>
@@ -1011,6 +1014,7 @@ function mergeSegs(walls) {
       p1: vertical ? Math.min(s.from.z, s.to.z) : Math.min(s.from.x, s.to.x),
       p2: vertical ? Math.max(s.from.z, s.to.z) : Math.max(s.from.x, s.to.x),
       t: s.thickness,
+      win: !!s.win,
     }))
     let changed = true
     while (changed) {
@@ -1029,6 +1033,7 @@ function mergeSegs(walls) {
           A.c = main.c
           // 두께는 주(긴) 세그먼트의 것 — max를 취하면 교차부의 두꺼운 조각이 본벽을 오염
           A.t = main.t
+          A.win = main.win
           list.splice(j, 1)
           changed = true
           break outer
@@ -1036,9 +1041,15 @@ function mergeSegs(walls) {
       }
     }
     for (const s of list) {
-      out.push(vertical
+      const wallOut = vertical
         ? { from: { x: Math.round(s.c), z: Math.round(s.p1) }, to: { x: Math.round(s.c), z: Math.round(s.p2) }, thickness: Math.round(s.t) }
-        : { from: { x: Math.round(s.p1), z: Math.round(s.c) }, to: { x: Math.round(s.p2), z: Math.round(s.c) }, thickness: Math.round(s.t) })
+        : { from: { x: Math.round(s.p1), z: Math.round(s.c) }, to: { x: Math.round(s.p2), z: Math.round(s.c) }, thickness: Math.round(s.t) }
+      if (s.win) {
+        // 창 승격 세그먼트: 스키마 openings(window)로 분리 — 3D 새시 렌더·충돌 파이프라인 연결
+        const len = Math.round(s.p2 - s.p1)
+        if (len > 16) wallOut.openings = [{ type: 'window', offset: 4, width: len - 8, height: 120 }]
+      }
+      out.push(wallOut)
     }
   }
   return out
