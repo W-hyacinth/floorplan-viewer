@@ -85,6 +85,9 @@ export async function detectWalls(src, underlay, debug = false) {
     const chroma = Math.max(r4, g4, b4) - Math.min(r4, g4, b4)
     if (chroma <= MAX_CHROMA) mask[i] = 1
   }
+  // (실험 기록) 경계 히스테리시스로 벽 코어에 붙은 중간 회색을 흡수하는 방식은
+  // LH 15장 배치에서 득실이 갈리고(일부 +0.1, 일부 -0.14) 합성 픽스처 3종이 회귀해 기각.
+  // 회색 새시 검출은 라벨 데이터 기반 정량 평가가 갖춰진 뒤 재시도한다.
 
   const minLen = Math.max(3, Math.round(MIN_LEN_CM / cmPerPx))
   const mergeGap = Math.max(1, Math.round(MERGE_GAP_CM / cmPerPx))
