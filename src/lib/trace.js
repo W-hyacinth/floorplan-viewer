@@ -191,10 +191,12 @@ function lineRescue(walls, rejects) {
   }
   const added = []
   for (const R of rejects) {
+    // 면일치 지원은 범위 검사보다 우선한다 — 채택 벽이 중앙에만 몰린 도면에서
+    // 외벽 라인이 '범위 밖'으로 오판되는 것을 막는다(실벽과 면이 맞으면 그 자체가 증거)
+    if (walls.some(w2 => aligned(w2, R))) { added.push(R); continue }
     const c = C(R)
     const inB = isV(R) ? (c >= xr[0] && c <= xr[1]) : (c >= zr[0] && c <= zr[1])
     if (!inB) continue
-    if (walls.some(w2 => aligned(w2, R))) { added.push(R); continue }
     // 동료 조각은 축 방향으로 서로 겹치지 않아야 한다(문·창으로 분리된 진짜 조각) —
     // 라벨 텍스트가 만드는 겹침 부산물 띠들이 서로를 보증하는 것을 차단
     const span = s => (isV(s)
@@ -445,10 +447,22 @@ function pruneToStructure(walls) {
   })
   const parent = [...Array(n).keys()]
   const find = i => (parent[i] === i ? i : (parent[i] = find(parent[i])))
+  const C2 = s => (isV(s) ? s.from.x : s.from.z)
+  const sameLine = (a, b) => {
+    if (isV(a) !== isV(b)) return false
+    const ca = C2(a)
+    const cb = C2(b)
+    return Math.abs(ca - cb) <= 8 ||
+      Math.abs((ca - a.thickness / 2) - (cb - b.thickness / 2)) <= 8 ||
+      Math.abs((ca + a.thickness / 2) - (cb + b.thickness / 2)) <= 8
+  }
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      if (rects[i].x1 <= rects[j].x2 && rects[j].x1 <= rects[i].x2 &&
-          rects[i].z1 <= rects[j].z2 && rects[j].z1 <= rects[i].z2) {
+      // 접촉 또는 같은 선(면일치) = 한 구조 단위 — 창새시로 띄엄띄엄한 외벽 라인이
+      // 조각별 소성분으로 흩어져 연쇄 사멸하지 않게 한다
+      if ((rects[i].x1 <= rects[j].x2 && rects[j].x1 <= rects[i].x2 &&
+           rects[i].z1 <= rects[j].z2 && rects[j].z1 <= rects[i].z2) ||
+          sameLine(walls[i], walls[j])) {
         parent[find(i)] = find(j)
       }
     }
