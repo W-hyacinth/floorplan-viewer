@@ -651,6 +651,12 @@ function findContentBox(img) {
   if (x2 < 0 || (x2 - x1) < pw * 0.2 || (y2 - y1) < ph * 0.2) {
     return { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight } // 내용이 없거나 이상 → 크롭 안 함
   }
+  // 여백이 클 때만 크롭한다. 크롭은 내용부 해상도를 바꿔 경계 위 띠들의 판정을 흔들 수 있어,
+  // 본래 목적(여백 과다 도면의 히스토그램·해상도 구제)이 필요한 경우로 한정한다.
+  const areaFrac = ((x2 - x1 + 1) * (y2 - y1 + 1)) / (pw * ph)
+  if (areaFrac >= 0.55) {
+    return { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight }
+  }
   const padX = Math.round((x2 - x1) * 0.02) + 1
   const padY = Math.round((y2 - y1) * 0.02) + 1
   const fx = v => Math.round(v / s)
