@@ -136,7 +136,103 @@ export async function detectWalls(src, underlay, debug = false) {
   if (debug) return walls
   const res = pruneToStructure(walls)
   completeWallLines(res, mask, w, h, cmPerPx, underlay, mergeGap)
+  detectGlazing(res, mask, w, h, cmPerPx, underlay)
   return res
+}
+
+// 벽 속 유리 구간(창·유리벽) 식별 → openings[{type:'window'}]로 등록.
+// 시그니처: 창 심볼은 벽 두께 안의 가는 2~3중 평행선 — 열 채움율이 낮으면서(≤0.75)
+// 띠 '내부'에 구간을 관통하는 연속된 선(중간선)이 존재한다. 솔리드 벽은 열이 꽉 차고,
+// CAD 해칭은 내부 픽셀이 있어도 연속된 한 줄이 없어 구분된다.
+// 평면도에는 높이 정보가 없으므로: 벽 일부 구간=창문(sill 90 기본), 스팬의 85%+가
+// 유리면=전면 유리벽으로 보고 sill 0·거의 전고 개구부 하나로 등록한다.
+function detectGlazing(walls, mask, w, h, cmPerPx, underlay) {
+  const isV = s => s.from.x === s.to.x
+  for (const wall of walls) {
+    const vertical = isV(wall)
+    const c = vertical ? wall.from.x : wall.from.z
+    const a = vertical ? Math.min(wall.from.z, wall.to.z) : Math.min(wall.from.x, wall.to.x)
+    const b = vertical ? Math.max(wall.from.z, wall.to.z) : Math.max(wall.from.x, wall.to.x)
+    const len = b - a
+    if (len < 60) continue
+    const cPx = Math.round((c - (vertical ? underlay.x : underlay.z)) / cmPerPx)
+    const halfT = Math.max(1, Math.round(wall.thickness / cmPerPx / 2))
+    const L1 = Math.max(0, cPx - halfT)
+    const L2 = Math.min((vertical ? w : h) - 1, cPx + halfT)
+    const inset = Math.max(2, Math.round((L2 - L1 + 1) * 0.25))
+    if (L2 - inset <= L1 + inset) continue
+    const off = vertical ? underlay.z : underlay.x
+    const pa = Math.max(0, Math.round((a - off) / cmPerPx))
+    const pb = Math.min((vertical ? h : w) - 1, Math.round((b - off) / cmPerPx))
+    const at = (i, L) => (vertical ? mask[i * w + L] : mask[L * w + i])
+    const colStat = i => {
+      let total = 0
+      let interior = 0
+      for (let L = L1; L <= L2; L++) {
+        const v = at(i, L)
+        total += v
+        if (v && L >= L1 + inset && L <= L2 - inset) interior = 1
+      }
+      return { fill: total / (L2 - L1 + 1), interior }
+    }
+    // 유리 후보 열의 연속 구간 수집
+    const gap = Math.max(4, Math.round(10 / cmPerPx))
+    const runs = []
+    let s0 = -1
+    let last = -1
+    for (let i = pa; i <= pb + 1; i++) {
+      let ok = false
+      if (i <= pb) {
+        const st = colStat(i)
+        ok = st.interior === 1 && st.fill <= 0.75
+      }
+      if (ok) {
+        if (s0 < 0) s0 = i
+        else if (i - last - 1 > gap) { runs.push([s0, last]); s0 = i }
+        last = i
+      }
+    }
+    if (s0 >= 0) runs.push([s0, last])
+    const openings = []
+    for (const [ra, rb] of runs) {
+      const wCm = (rb - ra + 1) * cmPerPx
+      if (wCm < 40) continue
+      // 결정타: 띠 '중앙부'를 관통하는 '가는' 연속선(창 중간선)이 있어야 유리.
+      // 물결친 솔리드 벽은 몸통이 두껍고, CAD 해칭 테두리·문턱선은 가장자리라 배제된다.
+      const tRows = L2 - L1 + 1
+      const midLo = L1 + Math.max(2, Math.round(tRows * 0.3))
+      const midHi = L2 - Math.max(2, Math.round(tRows * 0.3))
+      const maxThin = Math.max(2, tRows * 0.35)
+      let hasMidLine = false
+      let clStart = -1
+      for (let L = L1; L <= L2 + 1; L++) {
+        let on = 0
+        if (L <= L2) for (let i = ra; i <= rb; i++) on += at(i, L)
+        const covOk = L <= L2 && on >= 0.65 * (rb - ra + 1)
+        if (covOk && clStart < 0) clStart = L
+        if (!covOk && clStart >= 0) {
+          const mid = (clStart + L - 1) / 2
+          if (mid >= midLo && mid <= midHi && L - clStart <= maxThin) hasMidLine = true
+          clStart = -1
+        }
+      }
+      if (!hasMidLine) continue
+      openings.push({
+        type: 'window',
+        offset: Math.max(0, Math.round(ra * cmPerPx + off - a)),
+        width: Math.round(wCm),
+        height: 120,
+      })
+    }
+    if (!openings.length) continue
+    const covered = openings.reduce((s2, o) => s2 + o.width, 0)
+    if (covered / len >= 0.85) {
+      // 전면 유리벽: 개구부 하나로 거의 전체를 뚫는다(허리벽 없음)
+      wall.openings = [{ type: 'window', offset: 4, width: Math.round(len - 8), sillHeight: 0, height: 220 }]
+    } else {
+      wall.openings = openings
+    }
+  }
 }
 
 // 문 옆 잔여 벽 보완: 검출된 벽 '선' 위를 마스크로 재주사해, 직교 벽이나 기존 구간에

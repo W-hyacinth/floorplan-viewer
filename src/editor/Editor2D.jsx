@@ -369,9 +369,10 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
       } else {
         sceneApi.setWalls(walls)
         setSelected(null)
+        const glz = walls.reduce((s2, w2) => s2 + (w2.openings?.length ?? 0), 0)
         setTraceInfo(walls.length < 8
           ? `벽 ${walls.length}개 인식 — 벽이 적게 잡히면 실제 폭(cm) 보정이 정확한지 먼저 확인하세요 (보정이 작으면 얇은 내벽이 걸러집니다)`
-          : `벽 ${walls.length}개 인식 — 잘못 잡힌 벽은 클릭해서 삭제하세요`)
+          : `벽 ${walls.length}개 인식${glz ? ` · 창/유리 ${glz}곳` : ''} — 잘못 잡힌 벽은 클릭해서 삭제하세요`)
       }
     } catch (err) {
       setTraceInfo(`인식 실패: ${err.message}`)
