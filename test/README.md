@@ -11,3 +11,20 @@
 - 실전 지표는 별도: 합성 하드셋(ai-auto/도면샘플/실전풍_*) recall/precision + LH 배치 커버리지.
 
 픽스처 원본: ai-auto/도면샘플/ (버전 관리 밖). widthCm은 스냅샷에 기록됨.
+
+## v2(trace2.js) GT 랩 벤치 프로토콜 (2026-07-12 구축)
+
+정답 있는 합성 하드셋에서 v1/v2를 같은 심판으로 채점한다.
+
+1. GT 랩: `ai-auto/도면샘플/실전풍_생성.py` → `실전풍_아파트_850px.jpg` + `실전풍_아파트_GT.json`
+2. 평가기: `ai-auto/도면샘플/aihub_평가/eval_segments.py <GT.json> <검출.json> --assumed-width <가정폭>`
+   (세그먼트 vs 세그먼트, 1px=1cm 래스터, tol ±6cm. 보정 ±20% 실험은 --assumed-width로 재스케일)
+3. 실행: `npm run dev` 후 headless Chrome에서
+   `(await import('/src/lib/trace2.js')).detectWalls2('/bench.jpg', {x:0, z:0, widthCm})`
+   (이미지는 public/에 임시 복사, 끝나면 삭제. debug=true 3번째 인자로 라벨맵 PNG·방/포켓/리지 통계)
+4. 채점 3종: 정보정 1300 / -20% 1040 / +20% 1560.
+
+2026-07-12 기록 (P/R):
+- v1: 0.792/1.000 · 0.855/1.000 · 0.915/1.000
+- v2: 0.949/0.948 · 0.885/0.842 · 0.955/0.944
+v2 남은 과제: -20% 보정에서 recall 하락, 실전 LH 도면(기장 55B에서 v2 7개 vs v1 79개).

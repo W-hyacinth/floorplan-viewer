@@ -6,22 +6,28 @@
 //   글자·가구·치수선은 방 내부/외부에 있으므로 경계가 아니다 — 판정 게이트가 필요 없다.
 //
 // 파이프라인:
-//   이진화(벽 마스크) → 문 봉인 팽창으로 방 씨앗 분리 → 다중소스 BFS로 방 라벨 확장
+//   이진화(벽 마스크) → 실링용 구조 마스크(글자·점선·가구 제외) → 문 봉인 팽창으로 방 씨앗 분리
+//   → 다중소스 BFS로 방 라벨 확장 → 갇힌 영역 복원(봉인이 씨앗을 지운 방·외부)
 //   → 벽 픽셀 소유권 부여 → 라벨쌍 경계 리지 추출(벽 리지=벽 / 바닥 리지=문)
-//   → 최대 방 군집 선택(배너·카탈로그 시트 대응) → 리지를 축정렬 세그먼트로 피팅
-//   → 두께는 리지 주변 벽 마스크 실측 → v1과 동일한 스키마로 출력.
+//   → 열린 경계 방 병합(문보다 넓은 바닥 인터페이스) → 최대 방 군집 선택(배너·카탈로그 시트 대응)
+//   → 리지를 양방향 축정렬 세그먼트로 피팅 → 두께는 리지 주변 벽 마스크 실측 → v1과 동일한 스키마로 출력.
 //
 // cm 문턱이 거의 없어(봉인 반경 45cm, 최소 방 1.5㎡) 보정 오차에 구조적으로 강건하다.
 
 const MAX_SIDE = 1200
 const MAX_CHROMA = 60
-const DOOR_SEAL_CM = 45      // 이 반경 팽창으로 ≤90cm 개구부가 봉인돼 방이 분리된다
+const DOOR_SEAL_CM = 55      // 이 반경 팽창으로 문 개구부가 봉인돼 방이 분리된다 (90cm 문 + JPEG 블러 여유)
 const MIN_ROOM_M2 = 1.5      // 방 최소 면적
 const MIN_WALL_LEN_CM = 40
 const MIN_T_CM = 6
 const MAX_T_CM = 60
+const CLOSE_CM = 5           // 닫힘 반경 — 새시 창(가는 이중선+살) 틈을 벽 띠로 봉합
+const SEAL_MIN_COMP_CM = 120 // 실링 참여 최소 성분 크기 — 글자·심볼·점선은 방을 가르면 안 된다
+const FURN_MIN_CM = 75       // 양방향 모두 이보다 두꺼운 블롭 = 가구 — 실링에서 제외
+const MERGE_OPEN_CM = 110    // 문(≤90cm)보다 넓은 연속 열린 인터페이스 = 같은 방
+const RIDGE_MIN_T_CM = 4     // 경계의 실측 벽 띠가 이보다 얇으면 벽이 아니라 심볼/개구부
 
-export async function detectWalls2(src, underlay) {
+export async function detectWalls2(src, underlay, debug = false) {
   const img = await loadImage(src)
   const crop = findContentBox(img)
   const scale = MAX_SIDE / Math.max(crop.w, crop.h)
@@ -50,16 +56,33 @@ export async function detectWalls2(src, underlay) {
   let dark = 0
   for (let i = 0; i < N; i++) if (lum[i] < thr) dark++
   const darkIsWall = dark <= N / 2
-  const wall = new Uint8Array(N)
+  const raw = new Uint8Array(N)
   for (let i = 0; i < N; i++) {
     if ((lum[i] < thr) !== darkIsWall) continue
     const c = Math.max(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]) - Math.min(data[i * 4], data[i * 4 + 1], data[i * 4 + 2])
-    if (c <= MAX_CHROMA) wall[i] = 1
+    if (c <= MAX_CHROMA) raw[i] = 1
   }
+
+  // ── 1a) 닫힘(팽창→침식): 틈이 있는 부재를 벽 띠로 봉합 ──
+  // 새시 창(fill~0.5의 가는 이중선+살) 틈으로 방 라벨이 새면 외부와 한 라벨이 되어
+  // 그 벽의 리지가 통째로 사라진다(첫 벤치: 새시 recall 0.04의 원인).
+  const closed = close(raw, w, h, Math.max(1, Math.round(CLOSE_CM / cmPerPx)))
+
+  // 닫힌 마스크가 이후 단계의 벽(barrier·두께 실측)이다. 글자·점선·가구도 그대로 두는데,
+  // 마스크 레벨에서 심볼을 걸러내는 건 합성물(점선+글자가 닫힘으로 한 성분이 되는 등)에
+  // 취약해서다. 심볼이 방을 갈라도 경계 두께 판정(리지 단계)과 병합이 되돌린다.
+  const wall = closed
+
+  // ── 1b) 실링용 구조 마스크 ──
+  // 봉인 팽창만은 구조 부재로 제한한다: 글자·점선이 45~55cm씩 부풀면 작은 방의
+  // 씨앗이 통째로 지워진다(주방이 제 라벨 글자에 지워진 진단 결함).
+  // 가구 판정은 닫힘 이전(raw)에서 한다 — 닫힘이 벽에 붙은 가구를 벽 띠와 한 덩어리로
+  // 만들면 열림이 그 벽 구간까지 가구로 도려내 봉인 구멍이 생긴다(진단된 결함).
+  const structural = structuralMask(closed, raw, w, h, cmPerPx)
 
   // ── 2) 문 봉인 팽창 → 방 씨앗 ──
   const sealR = Math.max(2, Math.round(DOOR_SEAL_CM / cmPerPx))
-  const sealed = dilate(wall, w, h, sealR)
+  const sealed = dilate(structural, w, h, sealR)
   // 씨앗 라벨링: sealed=0 픽셀의 연결성분. 라벨 1=외부(테두리 접촉 성분 전부), 2..=방
   const label = new Int32Array(N) // 0=미배정
   const minRoomPx = Math.max(30, Math.round(MIN_ROOM_M2 * 1e4 / (cmPerPx * cmPerPx)))
@@ -94,36 +117,95 @@ export async function detectWalls2(src, underlay) {
 
   // ── 3) 라벨 확장: 비벽 픽셀 전체로 (기하 BFS — 방 모양 복원) ──
   bfsExpand(label, wall, w, h, false)
-  // ── 4) 벽 픽셀 소유권: 벽 마스크 안으로도 확장 ──
-  bfsExpand(label, wall, w, h, true)
 
-  // ── 5) 라벨쌍 경계 리지 ──
-  // wallRidge: 서로 다른 라벨의 벽 픽셀이 만나는 자리(=벽), pairKey → 픽셀들
-  const ridge = new Map()
-  const addR = (k, i) => { let a = ridge.get(k); if (!a) { a = []; ridge.set(k, a) } a.push(i) }
-  for (let y = 0; y < h - 1; y++) {
-    for (let x = 0; x < w - 1; x++) {
-      const i = y * w + x
-      const a = label[i]
-      for (const j of [i + 1, i + w]) {
-        const b = label[j]
-        if (a === b || a < 1 || b < 1) continue
-        if (!wall[i] && !wall[j]) continue // 둘 다 바닥 = 문/개구부 경계 → 벽 아님
-        addR(a < b ? a * 100000 + b : b * 100000 + a, i)
-      }
+  // ── 3b) 갇힌 영역 복원 ──
+  // 봉인 팽창이 씨앗을 통째로 지운 영역은 어느 라벨도 닿지 못해 0으로 남는다.
+  // (예: 좁은 도면 여백 전체가 봉인돼 외부 씨앗이 사라짐 → 외벽 리지 전멸,
+  //  가구·글자 실링에 씨앗을 잃은 작은 방.) 남은 비벽 성분을 수집해
+  // 테두리 접촉이면 외부(1), 최소 면적 이상이면 새 방으로 되살린다.
+  const pocketSeen = new Uint8Array(N)
+  const pocketLog = []
+  for (let s = 0; s < N; s++) {
+    if (label[s] || wall[s] || pocketSeen[s]) continue
+    const px = []
+    let touchesBorder = false
+    stack.length = 0
+    stack.push(s)
+    pocketSeen[s] = 1
+    while (stack.length) {
+      const i = stack.pop()
+      px.push(i)
+      const x = i % w, y = (i / w) | 0
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) touchesBorder = true
+      if (x > 0 && !wall[i - 1] && !label[i - 1] && !pocketSeen[i - 1]) { pocketSeen[i - 1] = 1; stack.push(i - 1) }
+      if (x < w - 1 && !wall[i + 1] && !label[i + 1] && !pocketSeen[i + 1]) { pocketSeen[i + 1] = 1; stack.push(i + 1) }
+      if (y > 0 && !wall[i - w] && !label[i - w] && !pocketSeen[i - w]) { pocketSeen[i - w] = 1; stack.push(i - w) }
+      if (y < h - 1 && !wall[i + w] && !label[i + w] && !pocketSeen[i + w]) { pocketSeen[i + w] = 1; stack.push(i + w) }
+    }
+    let lb = 0
+    if (touchesBorder) lb = 1
+    else if (px.length >= minRoomPx) lb = nextLabel++
+    if (px.length > 300) pocketLog.push({ size: px.length, touchesBorder, lb, x0: Math.min(...px.map(i => i % w)), x1: Math.max(...px.map(i => i % w)), y0: Math.min(...px.map(i => (i / w) | 0)), y1: Math.max(...px.map(i => (i / w) | 0)) })
+    if (lb >= 1) {
+      for (const i of px) label[i] = lb
+      compPx.set(lb, (compPx.get(lb) || 0) + px.length)
     }
   }
 
+  // ── 4) 벽 픽셀 소유권: 벽 마스크 안으로도 확장 ──
+  bfsExpand(label, wall, w, h, true)
+
+  // ── 5) 라벨쌍 경계 리지 (벽 리지=벽 / 바닥 리지=문·개구부) ──
+  let { wallR, floorR } = extractRidges(label, wall, w, h)
+
+  // ── 5b) 열린 경계 방 병합 ──
+  // 문은 90cm 이하라 봉인이 닫지만, 그보다 넓은 '열린 인터페이스'(바닥, 또는 벽 띠가
+  // RIDGE_MIN_T_CM보다 얇은 심볼 위 경계)로 만나는 두 라벨은 심볼·실링 부작용으로
+  // 갈라진 한 공간이다(진단: 점선+글자 합성 성분이 거실을 두 방으로 갈랐음).
+  const minTpx = RIDGE_MIN_T_CM / cmPerPx
+  for (let iter = 0; iter < 3; iter++) {
+    const parent = new Map()
+    const find = l => { let r3 = l; while (parent.has(r3)) r3 = parent.get(r3); return r3 }
+    let merged = false
+    const openByPair = new Map()
+    for (const [k, pxs] of floorR) openByPair.set(k, [...pxs])
+    for (const [k, pxs] of wallR) {
+      let arr = openByPair.get(k)
+      for (const i of pxs) {
+        if (pxThickness(wall, w, h, i) >= minTpx) continue
+        if (!arr) { arr = []; openByPair.set(k, arr) }
+        arr.push(i)
+      }
+    }
+    for (const [k, pxs] of openByPair) {
+      const a = Math.floor(k / 100000), b = k % 100000
+      if (a < 2 || b < 2) continue
+      const maxRun = fitSegments(pxs, w).reduce((m2, s) => Math.max(m2, s.len), 0)
+      if (maxRun * cmPerPx < MERGE_OPEN_CM) continue
+      const ra = find(a), rb = find(b)
+      if (ra !== rb) { parent.set(Math.max(ra, rb), Math.min(ra, rb)); merged = true }
+    }
+    if (!merged) break
+    for (let i = 0; i < N; i++) if (label[i] >= 2) label[i] = find(label[i])
+    for (const [l, n2] of [...compPx]) {
+      const r3 = find(l)
+      if (r3 !== l) { compPx.set(r3, (compPx.get(r3) || 0) + n2); compPx.delete(l) }
+    }
+    ;({ wallR, floorR } = extractRidges(label, wall, w, h))
+  }
+
   // ── 6) 최대 방 군집 선택 (배너·카탈로그 시트: 본 도면만) ──
-  // 방 인접 그래프(리지 공유 = 인접, 외부(1) 제외) → 총면적 최대 군집
+  // 방 인접 그래프(벽 또는 문(바닥) 리지 공유 = 인접, 외부(1) 제외) → 총면적 최대 군집
   const adj = new Map()
-  for (const k of ridge.keys()) {
-    const a = Math.floor(k / 100000), b = k % 100000
-    if (a === 1 || b === 1) continue
-    if (!adj.has(a)) adj.set(a, new Set())
-    if (!adj.has(b)) adj.set(b, new Set())
-    adj.get(a).add(b)
-    adj.get(b).add(a)
+  for (const src2 of [wallR, floorR]) {
+    for (const k of src2.keys()) {
+      const a = Math.floor(k / 100000), b = k % 100000
+      if (a === 1 || b === 1) continue
+      if (!adj.has(a)) adj.set(a, new Set())
+      if (!adj.has(b)) adj.set(b, new Set())
+      adj.get(a).add(b)
+      adj.get(b).add(a)
+    }
   }
   const roomLabels = [...compPx.keys()].filter(l => l >= 2)
   const seen = new Set()
@@ -147,18 +229,19 @@ export async function detectWalls2(src, underlay) {
 
   // ── 7) 리지 → 축정렬 벽 세그먼트 ──
   const walls = []
-  for (const [k, pxs] of ridge) {
+  for (const [k, pxs] of wallR) {
     const a = Math.floor(k / 100000), b = k % 100000
     const aIn = keep.has(a), bIn = keep.has(b)
     if (!(aIn || bIn)) continue
-    if ((a === 1 || b === 1) && !(aIn || bIn)) continue
     // 픽셀들을 마스크로 → 밴드 추출(가로/세로)
-    const segs = fitSegments(pxs, w, h)
+    const segs = fitSegments(pxs, w)
     for (const s of segs) {
       const lenCm = s.len * cmPerPx
       if (lenCm < MIN_WALL_LEN_CM) continue
-      // 두께: 세그먼트 중점들에서 수직 방향 벽 마스크 폭 실측(중앙값)
+      // 두께: 세그먼트 표본점들에서 수직 방향 벽 마스크 폭 실측(0 포함 중앙값).
+      // 실측 띠가 RIDGE_MIN_T_CM보다 얇으면 벽이 아니라 심볼 위 경계/개구부다.
       const tCm = measureThickness(wall, w, h, s) * cmPerPx
+      if (tCm < RIDGE_MIN_T_CM) continue
       const t = Math.round(Math.min(MAX_T_CM, Math.max(MIN_T_CM, tCm)))
       const c = (s.c + 0.5) * cmPerPx
       const p1 = s.a * cmPerPx
@@ -168,7 +251,48 @@ export async function detectWalls2(src, underlay) {
         : { from: { x: r2i(offX + p1), z: r2i(offZ + c) }, to: { x: r2i(offX + p2), z: r2i(offZ + c) }, thickness: t })
     }
   }
-  return mergeSegs(walls)
+  const merged = mergeSegs(walls)
+  if (debug) {
+    var segsDebug = []
+    for (const [k, pxs] of wallR) {
+      for (const s of fitSegments(pxs, w)) {
+        segsDebug.push({ pair: [Math.floor(k / 100000), k % 100000], vertical: s.vertical, c: s.c, a: s.a, b: s.b, len: s.len, tPx: measureThickness(wall, w, h, s) })
+      }
+    }
+  }
+  if (!debug) return merged
+  // 디버그: 라벨맵 PNG + 파이프라인 통계 (벤치 전용)
+  const dbgCv = document.createElement('canvas')
+  dbgCv.width = w
+  dbgCv.height = h
+  const dbgCtx = dbgCv.getContext('2d')
+  const dbgIm = dbgCtx.createImageData(w, h)
+  const pal = [[0, 0, 0], [255, 255, 255], [230, 80, 80], [80, 160, 240], [90, 200, 120], [240, 200, 80], [180, 100, 220], [240, 140, 60], [110, 220, 220], [200, 220, 100]]
+  for (let i = 0; i < N; i++) {
+    const l = label[i]
+    const col = l < 0 ? [255, 0, 255] : pal[l % pal.length]
+    const shade = wall[i] ? 0.45 : 1
+    dbgIm.data[i * 4] = col[0] * shade
+    dbgIm.data[i * 4 + 1] = col[1] * shade
+    dbgIm.data[i * 4 + 2] = col[2] * shade
+    dbgIm.data[i * 4 + 3] = 255
+  }
+  dbgCtx.putImageData(dbgIm, 0, 0)
+  const rooms = {}
+  for (const [l, n2] of compPx) rooms[l] = Math.round(n2 * cmPerPx * cmPerPx / 1e4 * 100) / 100
+  return {
+    walls: merged,
+    labelPng: dbgCv.toDataURL('image/png'),
+    stats: {
+      cmPerPx, sealR, rooms, keep: [...keep], segsDebug, pocketLog,
+      wallPairs: [...wallR.entries()].map(([k, v]) => {
+        const wallFrac = v.filter(i => wall[i]).length / v.length
+        const ths = v.map(i => pxThickness(wall, w, h, i)).sort((q, r3) => q - r3)
+        return [Math.floor(k / 100000), k % 100000, v.length, Math.round(wallFrac * 100) / 100, ths[Math.floor(ths.length / 2)]]
+      }),
+      floorPairs: [...floorR.entries()].map(([k, v]) => [Math.floor(k / 100000), k % 100000, v.length]),
+    },
+  }
 }
 
 const r2i = v => Math.round(v)
@@ -221,6 +345,102 @@ function findContentBox(img) {
     w: Math.min(img.naturalWidth, fx(x2 + padX)) - Math.max(0, fx(x1 - padX)),
     h: Math.min(img.naturalHeight, fx(y2 + padY)) - Math.max(0, fx(y1 - padY)),
   }
+}
+
+// 구조 부재만 남긴 벽 마스크. 벽 = 길게 이어진 네트워크(성분 bbox가 큼)이면서
+// 띠로서의 실질 두께(면적/최장변)가 있는 것. 글자·치수·심볼은 bbox가 작아서,
+// 닫힘으로 이어진 확장 점선은 평균 두께 ~2cm라서 걸러진다. 가구 블롭은 열림으로 제거.
+function structuralMask(wall, raw, w, h, cmPerPx) {
+  const N = w * h
+  const out = new Uint8Array(N)
+  const minSide = Math.round(SEAL_MIN_COMP_CM / cmPerPx)
+  const minThick = Math.max(1.5, 4 / cmPerPx) // 평균 두께 4cm 미만 성분 = 선형 심볼
+  const seen = new Uint8Array(N)
+  const stack = []
+  for (let s = 0; s < N; s++) {
+    if (!wall[s] || seen[s]) continue
+    stack.length = 0
+    stack.push(s)
+    seen[s] = 1
+    const px = []
+    let x1 = w, x2 = 0, y1 = h, y2 = 0
+    while (stack.length) {
+      const i = stack.pop()
+      px.push(i)
+      const x = i % w, y = (i / w) | 0
+      if (x < x1) x1 = x
+      if (x > x2) x2 = x
+      if (y < y1) y1 = y
+      if (y > y2) y2 = y
+      if (x > 0 && wall[i - 1] && !seen[i - 1]) { seen[i - 1] = 1; stack.push(i - 1) }
+      if (x < w - 1 && wall[i + 1] && !seen[i + 1]) { seen[i + 1] = 1; stack.push(i + 1) }
+      if (y > 0 && wall[i - w] && !seen[i - w]) { seen[i - w] = 1; stack.push(i - w) }
+      if (y < h - 1 && wall[i + w] && !seen[i + w]) { seen[i + w] = 1; stack.push(i + w) }
+    }
+    const maxDim = Math.max(x2 - x1, y2 - y1) + 1
+    if (maxDim >= minSide && px.length / maxDim >= minThick) for (const i of px) out[i] = 1
+  }
+  // 가구: 양방향 모두 FURN_MIN_CM보다 두꺼운 블롭 — 닫힘 이전 raw에서 열림(침식→팽창)으로
+  // 코어를 찾아 제외한다(닫힘 후에는 벽에 붙은 가구가 벽 띠와 합쳐져 벽까지 도려내진다)
+  const rF = Math.max(1, Math.round(FURN_MIN_CM / 2 / cmPerPx))
+  const furn = dilate(erode(raw, w, h, rF), w, h, rF)
+  for (let i = 0; i < N; i++) if (furn[i]) out[i] = 0
+  return out
+}
+
+// 라벨쌍 경계 리지: 서로 다른 라벨(≥1)이 만나는 자리.
+// 어느 한쪽이 벽 픽셀이면 벽 리지, 둘 다 바닥이면 문/개구부 리지.
+function extractRidges(label, wall, w, h) {
+  const wallR = new Map()
+  const floorR = new Map()
+  for (let y = 0; y < h - 1; y++) {
+    for (let x = 0; x < w - 1; x++) {
+      const i = y * w + x
+      const a = label[i]
+      for (const j of [i + 1, i + w]) {
+        const b = label[j]
+        if (a === b || a < 1 || b < 1) continue
+        const m = (wall[i] || wall[j]) ? wallR : floorR
+        const k = a < b ? a * 100000 + b : b * 100000 + a
+        let arr = m.get(k)
+        if (!arr) { arr = []; m.set(k, arr) }
+        arr.push(i)
+      }
+    }
+  }
+  return { wallR, floorR }
+}
+
+// 닫힘 = 팽창 후 침식 — 2r 이하의 내부 틈을 메우고 외곽은 보존.
+// 침식은 경계 밖을 배경으로 취급해야 한다(반전 팽창으로 구현하면 이미지 가장자리의
+// 좁은 도면 여백이 벽으로 메워져 외부 라벨이 파편화된다).
+function close(mask, w, h, r) {
+  return erode(dilate(mask, w, h, r), w, h, r)
+}
+
+// 체비쇼프(사각) 침식 — 창 전체가 채워진 픽셀만 생존, 경계 밖 = 배경
+function erode(mask, w, h, r) {
+  const tmp = new Uint8Array(mask.length)
+  const out = new Uint8Array(mask.length)
+  const full = 2 * r + 1
+  for (let y = 0; y < h; y++) {
+    const row = y * w
+    let cnt = 0
+    for (let x = -r; x < w; x++) {
+      if (x + r < w && mask[row + x + r]) cnt++
+      if (x - r - 1 >= 0 && mask[row + x - r - 1]) cnt--
+      if (x >= 0) tmp[row + x] = cnt === full ? 1 : 0
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let cnt = 0
+    for (let y = -r; y < h; y++) {
+      if (y + r < h && tmp[(y + r) * w + x]) cnt++
+      if (y - r - 1 >= 0 && tmp[(y - r - 1) * w + x]) cnt--
+      if (y >= 0) out[y * w + x] = cnt === full ? 1 : 0
+    }
+  }
+  return out
 }
 
 // 체비쇼프(사각) 팽창 — 두 번의 1D 슬라이딩 최대로 O(N)
@@ -277,56 +497,86 @@ function bfsExpand(label, wall, w, h, intoWall) {
   }
 }
 
-// 리지 픽셀 집합 → 축정렬 밴드들 {vertical, c(라인), a..b(스팬 px), len}
+// 리지 픽셀 집합 → 축정렬 밴드들 {vertical, c(라인), a..b(스팬 px), len}.
+// 탐욕적 벗겨내기: 두 방향 모두에서 가장 긴 연속 런을 찾아 세그먼트로 떼어내고 반복.
+// (지배축 1회 피팅은 외곽 고리·L자 경계에서 c 그룹이 ±2 사슬로 이어져 전체가
+//  도면 한가운데의 한 라인으로 붕괴하거나 한 방향이 통째로 소실된다 — 진단된 결함.)
 function fitSegments(pxs, w) {
-  // 가로/세로 히스토그램으로 지배 방향 판단 후, 지배 축 기준 1px 밴드 러닝
-  const xs = pxs.map(i => i % w)
-  const ys = pxs.map(i => (i / w) | 0)
-  const spanX = Math.max(...xs) - Math.min(...xs)
-  const spanY = Math.max(...ys) - Math.min(...ys)
-  // 픽셀들을 (라인 → 정렬된 좌표들)로 그룹화해 연속 런 추출, 라인 방향은 세그먼트별로 다를 수 있어
-  // 두 방향 모두 시도해 긴 쪽 채택은 비싸므로: 지배 축 하나로 처리(교차 벽은 다른 라벨쌍에서 나옴)
-  const vertical = spanY >= spanX
-  const line = new Map() // c → sorted coords
-  for (let k = 0; k < pxs.length; k++) {
-    const c = vertical ? xs[k] : ys[k]
-    const p = vertical ? ys[k] : xs[k]
-    let arr = line.get(c)
-    if (!arr) { arr = []; line.set(c, arr) }
-    arr.push(p)
+  const n = pxs.length
+  if (n < 3) return []
+  const xs = new Int32Array(n)
+  const ys = new Int32Array(n)
+  for (let k = 0; k < n; k++) {
+    xs[k] = pxs[k] % w
+    ys[k] = (pxs[k] / w) | 0
   }
-  // 리지는 보통 1~2px 두께의 선 — c들을 ±2로 뭉쳐 하나의 라인으로
-  const cs = [...line.keys()].sort((q, r3) => q - r3)
-  const groups = []
-  let cur = null
-  for (const c of cs) {
-    if (cur && c - cur.cMax <= 2) { cur.cMax = c; cur.cs.push(c) }
-    else { cur = { cMin: c, cMax: c, cs: [c] }; groups.push(cur) }
-  }
+  const alive = new Uint8Array(n).fill(1)
   const out = []
-  for (const g of groups) {
-    const coords = []
-    for (const c of g.cs) coords.push(...line.get(c))
-    coords.sort((q, r3) => q - r3)
-    // 연속 런(갭 ≤ 6px 허용 — 리지의 소소한 끊김)
-    let a = coords[0], last = coords[0]
-    const cMid = Math.round((g.cMin + g.cMax) / 2)
-    for (let k = 1; k <= coords.length; k++) {
-      const v = coords[k]
-      if (k === coords.length || v - last > 6) {
-        if (last - a + 1 >= 3) out.push({ vertical, c: cMid, a, b: last, len: last - a + 1 })
-        a = v
+  for (let guard = 0; guard < 64; guard++) {
+    const maps = [new Map(), new Map()] // [가로(c=y, p=x), 세로(c=x, p=y)]
+    for (let k = 0; k < n; k++) {
+      if (!alive[k]) continue
+      for (let o = 0; o < 2; o++) {
+        const c = o ? xs[k] : ys[k]
+        let arr = maps[o].get(c)
+        if (!arr) { arr = []; maps[o].set(c, arr) }
+        arr.push(o ? ys[k] : xs[k], k)
       }
-      last = v
     }
+    // 리지는 1~2px 두께 — c±1 병합 라인에서 최장 런(갭 ≤ 6px 허용)을 찾는다
+    let best = null
+    for (let o = 0; o < 2; o++) {
+      for (const c of maps[o].keys()) {
+        const pts = []
+        for (let dc = -1; dc <= 1; dc++) {
+          const arr = maps[o].get(c + dc)
+          if (arr) for (let t2 = 0; t2 < arr.length; t2 += 2) pts.push([arr[t2], arr[t2 + 1], c + dc])
+        }
+        if (pts.length < 3) continue
+        pts.sort((q, r3) => q[0] - r3[0])
+        let runStart = 0
+        for (let k = 1; k <= pts.length; k++) {
+          if (k === pts.length || pts[k][0] - pts[k - 1][0] > 6) {
+            const len = pts[k - 1][0] - pts[runStart][0] + 1
+            if (len >= 3 && (!best || len > best.len)) best = { o, len, pts: pts.slice(runStart, k) }
+            runStart = k
+          }
+        }
+      }
+    }
+    if (!best) break
+    const a = best.pts[0][0], b = best.pts[best.pts.length - 1][0]
+    let cSum = 0
+    for (const p of best.pts) {
+      cSum += p[2]
+      alive[p[1]] = 0
+    }
+    out.push({ vertical: best.o === 1, c: Math.round(cSum / best.pts.length), a, b, len: b - a + 1 })
   }
   return out
 }
 
-// 세그먼트 중점 표본들에서 수직 방향 벽 마스크 연속 폭의 중앙값(px)
+// 한 픽셀에서의 벽 띠 두께: 가로/세로 연속 벽 런 중 짧은 쪽(px). 벽이 아니면 0
+function pxThickness(wall, w, h, i) {
+  if (!wall[i]) return 0
+  const LIM = 80
+  const x = i % w, y = (i / w) | 0
+  let a = x
+  while (a > 0 && x - a < LIM && wall[y * w + a - 1]) a--
+  let b = x
+  while (b < w - 1 && b - x < LIM && wall[y * w + b + 1]) b++
+  let c = y
+  while (c > 0 && y - c < LIM && wall[(c - 1) * w + x]) c--
+  let d = y
+  while (d < h - 1 && d - y < LIM && wall[(d + 1) * w + x]) d++
+  return Math.min(b - a + 1, d - c + 1)
+}
+
+// 세그먼트 표본점들에서 수직 방향 벽 마스크 연속 폭의 중앙값(px).
+// 0(벽 없음)도 표본에 포함 — 표본 과반이 바닥이면 0이 나와 벽이 아님이 드러난다.
 function measureThickness(wall, w, h, s) {
   const samples = []
-  const n = Math.min(9, s.len)
+  const n = Math.min(15, s.len)
   for (let k = 0; k < n; k++) {
     const p = Math.round(s.a + ((k + 0.5) / n) * (s.b - s.a))
     const x0 = s.vertical ? s.c : p
@@ -347,9 +597,8 @@ function measureThickness(wall, w, h, s) {
       samples.push(wall[y0 * w + x0] ? lo2 + hi2 + 1 : 0)
     }
   }
-  const nz = samples.filter(v => v > 0).sort((q, r3) => q - r3)
-  if (!nz.length) return 8
-  return nz[Math.floor(nz.length / 2)]
+  samples.sort((q, r3) => q - r3)
+  return samples[Math.floor(samples.length / 2)]
 }
 
 // 동일선 근접 세그먼트 잇기 + 중복 흡수(간단판)
