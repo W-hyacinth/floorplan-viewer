@@ -14,7 +14,7 @@
 const MAX_SIDE = 1200      // 처리 해상도 상한(px)
 const MIN_LEN_CM = 40      // 이보다 짧은 띠는 벽으로 안 봄(문 옆 40cm 스텁은 벽이다 — 글자는 판정 게이트가 거름)
 const MIN_T_CM = 6         // 띠 추출 두께 하한(가는 선은 융합 후보로만)
-const MAX_T_CM = 45        // 벽 두께 상한(색면·가구 채움 배제)
+const MAX_T_CM = 60        // 벽 두께 상한(색면·가구 채움 배제) — 실전 LH 도면은 구조벽을 과장해 그려 45로는 주벽이 잘렸다(두꺼운 글자 블롭은 채움율·내부밀도 게이트가 거름)
 const MERGE_GAP_CM = 12    // 같은 줄에서 이 이하 끊김은 노이즈로 이음(문 개구부 60cm+는 유지)
 const FUSE_DIST_CM = 22    // 나란한 '가는' 띠끼리 하나로 합칠 간격(창 다중선·중공벽 외곽선 쌍)
 const MAX_CHROMA = 60      // max(RGB)-min(RGB)가 이보다 크면 유채색 장식으로 보고 벽에서 제외
@@ -379,7 +379,17 @@ function pruneToStructure(walls) {
     else c.h = true
   })
   const kept = []
-  for (const c of comps.values()) if (c.h && c.v) kept.push(...c.idx)
+  for (const c of comps.values()) {
+    // 코너 있는 성분 + '강한 벽 증거'(두께 18cm+ & 길이 200cm+) 성분은 유지.
+    // 실전 도면은 새시·창 박스가 벽 끝을 갉아 코너 접점이 끊기는 일이 흔한데,
+    // 치수선(얇음)·소파 이중선(t~10)·표제 텍스트는 이 기준에 못 미친다.
+    const strong = c.idx.some(i => {
+      const w2 = walls[i]
+      const len = Math.abs(w2.to.x - w2.from.x) + Math.abs(w2.to.z - w2.from.z)
+      return w2.thickness >= 18 && len >= 200
+    })
+    if ((c.h && c.v) || strong) kept.push(...c.idx)
+  }
   if (!kept.length) return walls // 코너가 전혀 없으면 판단 보류 — 원본 유지
   let res = kept.map(i => walls[i])
   // 구제: 코너 없는 조각이라도 채택된 벽과 동일선상이면 같은 벽의 일부다
