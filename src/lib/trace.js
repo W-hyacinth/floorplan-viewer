@@ -46,18 +46,25 @@ const EDGE_INTERIOR_MIN = 0.25
 
 export async function detectWalls(src, underlay, debug = false) {
   const img = await loadImage(src)
+  // 내용 영역 자동 크롭: 실전 도면(LH 등)은 이미지의 절반 이상이 여백인 경우가 많아
+  // 히스토그램 백분위가 오염되고(이진화 문턱이 바닥재까지 삼킴) 유효 해상도도 낭비된다.
+  // 테두리 표본으로 배경색을 정하고, 배경과 다른 픽셀의 bbox만 처리한다.
+  const crop = findContentBox(img)
   // 작은 이미지는 업스케일해 정규화 — 실전 저해상도 도면(px당 2~3cm)에서 병합·두께
   // 문턱이 픽셀 단위로 뭉개지는 것을 막는다(보간이 선을 매끈하게 이어줘 띠가 안정됨)
-  const scale = MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight)
-  const w = Math.max(1, Math.round(img.naturalWidth * scale))
-  const h = Math.max(1, Math.round(img.naturalHeight * scale))
+  const scale = MAX_SIDE / Math.max(crop.w, crop.h)
+  const w = Math.max(1, Math.round(crop.w * scale))
+  const h = Math.max(1, Math.round(crop.h * scale))
   const cv = document.createElement('canvas')
   cv.width = w
   cv.height = h
   const ctx = cv.getContext('2d', { willReadFrequently: true })
-  ctx.drawImage(img, 0, 0, w, h)
+  ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, w, h)
   const data = ctx.getImageData(0, 0, w, h).data
-  const cmPerPx = underlay.widthCm / w
+  const fullCmPerPx = underlay.widthCm / img.naturalWidth
+  const cmPerPx = (crop.w * fullCmPerPx) / w
+  // 이하 파이프라인의 좌표 원점은 '크롭 프레임' — 최종 벽 좌표는 이 오프셋으로 원본 cm 프레임에 얹힌다
+  underlay = { x: underlay.x + crop.x * fullCmPerPx, z: underlay.z + crop.y * fullCmPerPx, widthCm: crop.w * fullCmPerPx }
 
   const lum = new Float32Array(w * h)
   for (let i = 0; i < w * h; i++) {
@@ -597,6 +604,49 @@ function joinCollinear(segs) {
     }
   }
   return list
+}
+
+// 배경(테두리 픽셀 중앙값)과 다른 픽셀들의 bbox — 저해상 프리스캔으로 계산
+function findContentBox(img) {
+  const P = 240
+  const s = P / Math.max(img.naturalWidth, img.naturalHeight)
+  const pw = Math.max(1, Math.round(img.naturalWidth * s))
+  const ph = Math.max(1, Math.round(img.naturalHeight * s))
+  const cv = document.createElement('canvas')
+  cv.width = pw
+  cv.height = ph
+  const ctx = cv.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(img, 0, 0, pw, ph)
+  const d = ctx.getImageData(0, 0, pw, ph).data
+  const lum = i => 0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2]
+  const border = []
+  for (let x = 0; x < pw; x++) { border.push(lum(x), lum((ph - 1) * pw + x)) }
+  for (let y = 0; y < ph; y++) { border.push(lum(y * pw), lum(y * pw + pw - 1)) }
+  border.sort((a, b) => a - b)
+  const bg = border[Math.floor(border.length / 2)]
+  let x1 = pw, y1 = ph, x2 = -1, y2 = -1
+  for (let y = 0; y < ph; y++) {
+    for (let x = 0; x < pw; x++) {
+      if (Math.abs(lum(y * pw + x) - bg) > 28) {
+        if (x < x1) x1 = x
+        if (x > x2) x2 = x
+        if (y < y1) y1 = y
+        if (y > y2) y2 = y
+      }
+    }
+  }
+  if (x2 < 0 || (x2 - x1) < pw * 0.2 || (y2 - y1) < ph * 0.2) {
+    return { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight } // 내용이 없거나 이상 → 크롭 안 함
+  }
+  const padX = Math.round((x2 - x1) * 0.02) + 1
+  const padY = Math.round((y2 - y1) * 0.02) + 1
+  const fx = v => Math.round(v / s)
+  return {
+    x: Math.max(0, fx(x1 - padX)),
+    y: Math.max(0, fx(y1 - padY)),
+    w: Math.min(img.naturalWidth, fx(x2 + padX)) - Math.max(0, fx(x1 - padX)),
+    h: Math.min(img.naturalHeight, fx(y2 + padY)) - Math.max(0, fx(y1 - padY)),
+  }
 }
 
 function loadImage(src) {
