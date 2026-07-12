@@ -82,7 +82,7 @@ export async function detectWalls2(src, underlay, debug = false) {
   // 씨앗이 통째로 지워진다(주방이 제 라벨 글자에 지워진 진단 결함).
   // 가구 판정은 닫힘 이전(raw)에서 한다 — 닫힘이 벽에 붙은 가구를 벽 띠와 한 덩어리로
   // 만들면 열림이 그 벽 구간까지 가구로 도려내 봉인 구멍이 생긴다(진단된 결함).
-  const structural = structuralMask(closed, raw, w, h, cmPerPx)
+  const structural = structuralMask(closed, raw, lum, lo, hi, w, h, cmPerPx)
 
   // ── 2·3) 거리변환 워터셰드: 방 = 거리 지형의 분지, 문/개구부 = 안장 ──
   // (고정 반경 봉인의 두 결함 대체: ①작은 방은 봉인 침식에 씨앗이 소멸 ②이진화가 놓친
@@ -110,15 +110,20 @@ export async function detectWalls2(src, underlay, debug = false) {
         if (label[i]) continue
         const x = i % w, y = (i / w) | 0
         const x0 = x > 0, x1 = x < w - 1, y0 = y > 0, y1 = y < h - 1
-        let lb = 0
-        if (x0 && label[i - 1]) lb = label[i - 1]
-        else if (x1 && label[i + 1]) lb = label[i + 1]
-        else if (y0 && label[i - w]) lb = label[i - w]
-        else if (y1 && label[i + w]) lb = label[i + w]
-        else if (y0 && x0 && label[i - w - 1]) lb = label[i - w - 1]
-        else if (y0 && x1 && label[i - w + 1]) lb = label[i - w + 1]
-        else if (y1 && x0 && label[i + w - 1]) lb = label[i + w - 1]
-        else if (y1 && x1 && label[i + w + 1]) lb = label[i + w + 1]
+        // 채택은 최급상승: D가 가장 높은 라벨 이웃 = 분지의 진짜 부모.
+        // 고정 순서(왼쪽 우선)로 채택하면 같은 D의 평탄 등고선(벽과 평행한 행/열)이
+        // 스캔 방향으로 통째로 찢겨 문틈 침입 라벨이 방의 벽면 띠를 차지한다
+        // (가로벽 리지만 소실되던 비대칭의 원인 — 행은 좌→우로 찢기고 열은 보호됐음).
+        let lb = 0, bestD = -1
+        const adopt = j => { if (label[j] > 0 && D[j] > bestD) { bestD = D[j]; lb = label[j] } }
+        if (x0) adopt(i - 1)
+        if (x1) adopt(i + 1)
+        if (y0) adopt(i - w)
+        if (y1) adopt(i + w)
+        if (y0 && x0) adopt(i - w - 1)
+        if (y0 && x1) adopt(i - w + 1)
+        if (y1 && x0) adopt(i + w - 1)
+        if (y1 && x1) adopt(i + w + 1)
         if (!lb) {
           if (d < minSeedD) continue // 얕은 극대점은 씨앗이 아님 — 이웃 분지가 나중에 흡수
           lb = nextLabel++
@@ -200,7 +205,7 @@ export async function detectWalls2(src, underlay, debug = false) {
   bfsExpand(label, wall, w, h, true)
 
   // ── 5) 라벨쌍 경계 리지 (벽 리지=벽 / 바닥 리지=문·개구부) ──
-  let { wallR, floorR } = extractRidges(label, wall, w, h)
+  let { wallR, floorR } = extractRidges(label, structural, w, h)
 
   let preMergePng = null
   let preGrid = null
@@ -225,7 +230,7 @@ export async function detectWalls2(src, underlay, debug = false) {
     for (const [k, pxs] of wallR) {
       let arr = openByPair.get(k)
       for (const i of pxs) {
-        if (pxThickness(wall, w, h, i) >= minTpx) {
+        if (pxThickness(structural, w, h, i) >= minTpx) {
           thickByPair.set(k, (thickByPair.get(k) || 0) + 1)
           continue
         }
@@ -256,7 +261,7 @@ export async function detectWalls2(src, underlay, debug = false) {
       const r3 = find(l)
       if (r3 !== l) { compPx.set(r3, (compPx.get(r3) || 0) + n2); compPx.delete(l) }
     }
-    ;({ wallR, floorR } = extractRidges(label, wall, w, h))
+    ;({ wallR, floorR } = extractRidges(label, structural, w, h))
   }
 
   // ── 6) 최대 방 군집 선택 (배너·카탈로그 시트: 본 도면만) ──
@@ -307,7 +312,7 @@ export async function detectWalls2(src, underlay, debug = false) {
       if (lenCm < 18) continue
       // 두께: 세그먼트 표본점들에서 수직 방향 벽 마스크 폭 실측(0 포함 중앙값).
       // 실측 띠가 RIDGE_MIN_T_CM보다 얇으면 벽이 아니라 심볼 위 경계/개구부다.
-      const tCm = measureThickness(wall, w, h, s) * cmPerPx
+      const tCm = measureThickness(structural, w, h, s) * cmPerPx
       if (tCm < RIDGE_MIN_T_CM) continue
       const t = Math.round(Math.min(MAX_T_CM, Math.max(MIN_T_CM, tCm)))
       const c = (s.c + 0.5) * cmPerPx
@@ -343,7 +348,7 @@ export async function detectWalls2(src, underlay, debug = false) {
     var segsDebug = []
     for (const [k, pxs] of wallR) {
       for (const s of fitSegments(pxs, w)) {
-        segsDebug.push({ pair: [Math.floor(k / 100000), k % 100000], vertical: s.vertical, c: s.c, a: s.a, b: s.b, len: s.len, tPx: measureThickness(wall, w, h, s) })
+        segsDebug.push({ pair: [Math.floor(k / 100000), k % 100000], vertical: s.vertical, c: s.c, a: s.a, b: s.b, len: s.len, tPx: measureThickness(structural, w, h, s) })
       }
     }
   }
@@ -360,7 +365,7 @@ export async function detectWalls2(src, underlay, debug = false) {
       cmPerPx, rooms, keep: [...keep], segsDebug, pocketLog, mergeLog, preGrid, postGrid: sampleGrid(label, w, h, 20),
       wallPairs: [...wallR.entries()].map(([k, v]) => {
         const wallFrac = v.filter(i => wall[i]).length / v.length
-        const ths = v.map(i => pxThickness(wall, w, h, i)).sort((q, r3) => q - r3)
+        const ths = v.map(i => pxThickness(structural, w, h, i)).sort((q, r3) => q - r3)
         return [Math.floor(k / 100000), k % 100000, v.length, Math.round(wallFrac * 100) / 100, ths[Math.floor(ths.length / 2)]]
       }),
       floorPairs: [...floorR.entries()].map(([k, v]) => [Math.floor(k / 100000), k % 100000, v.length]),
@@ -454,8 +459,9 @@ function findContentBox(img) {
 
 // 구조 부재만 남긴 벽 마스크. 벽 = 길게 이어진 네트워크(성분 bbox가 큼)이면서
 // 띠로서의 실질 두께(면적/최장변)가 있는 것. 글자·치수·심볼은 bbox가 작아서,
-// 닫힘으로 이어진 확장 점선은 평균 두께 ~2cm라서 걸러진다. 가구 블롭은 열림으로 제거.
-function structuralMask(wall, raw, w, h, cmPerPx) {
+// 닫힘으로 이어진 확장 점선은 평균 두께 ~2cm라서 걸러진다. 가구는 열림(두꺼운 블롭)+
+// 톤 게이트(잉크보다 밝은 회색 블롭 — 장롱·소파·수납 심볼)로 제거.
+function structuralMask(wall, raw, lum, lo, hi, w, h, cmPerPx) {
   const N = w * h
   const out = new Uint8Array(N)
   const minSide = Math.round(SEAL_MIN_COMP_CM / cmPerPx)
@@ -497,11 +503,52 @@ function structuralMask(wall, raw, w, h, cmPerPx) {
       if (px.some(i => prox[i])) for (const i of px) out[i] = 1
     }
   }
-  // 가구: 양방향 모두 FURN_MIN_CM보다 두꺼운 블롭 — 닫힘 이전 raw에서 열림(침식→팽창)으로
+  // 가구 ①: 양방향 모두 FURN_MIN_CM보다 두꺼운 블롭 — 닫힘 이전 raw에서 열림(침식→팽창)으로
   // 코어를 찾아 제외한다(닫힘 후에는 벽에 붙은 가구가 벽 띠와 합쳐져 벽까지 도려내진다)
   const rF = Math.max(1, Math.round(FURN_MIN_CM / 2 / cmPerPx))
   const furn = dilate(erode(raw, w, h, rF), w, h, rF)
   for (let i = 0; i < N; i++) if (furn[i]) out[i] = 0
+  // 가구 ②: 톤 게이트 — 잉크(벽)보다 확연히 밝은 회색 블롭(소파·수납·장롱 심볼).
+  // raw 성분 단위로 평균 밝기를 재고, 어느 정도 몸집(최소변 25cm)이 있으면 제외.
+  // 얇은 벽·새시 잉크는 어둡고, 주방 카운터급 준벽(짙은 회색)은 문턱 아래라 유지된다.
+  {
+    const grayThr = lo + 0.3 * (hi - lo)
+    const minDim2 = Math.round(25 / cmPerPx)
+    const seen2 = new Uint8Array(N)
+    const grayBlob = new Uint8Array(N)
+    let anyGray = false
+    for (let s = 0; s < N; s++) {
+      if (!raw[s] || seen2[s]) continue
+      stack.length = 0
+      stack.push(s)
+      seen2[s] = 1
+      const px = []
+      let x1 = w, x2 = 0, y1 = h, y2 = 0, sum = 0
+      while (stack.length) {
+        const i = stack.pop()
+        px.push(i)
+        sum += lum[i]
+        const x = i % w, y = (i / w) | 0
+        if (x < x1) x1 = x
+        if (x > x2) x2 = x
+        if (y < y1) y1 = y
+        if (y > y2) y2 = y
+        if (x > 0 && raw[i - 1] && !seen2[i - 1]) { seen2[i - 1] = 1; stack.push(i - 1) }
+        if (x < w - 1 && raw[i + 1] && !seen2[i + 1]) { seen2[i + 1] = 1; stack.push(i + 1) }
+        if (y > 0 && raw[i - w] && !seen2[i - w]) { seen2[i - w] = 1; stack.push(i - w) }
+        if (y < h - 1 && raw[i + w] && !seen2[i + w]) { seen2[i + w] = 1; stack.push(i + w) }
+      }
+      if (Math.min(x2 - x1, y2 - y1) + 1 < minDim2) continue
+      if (sum / px.length <= grayThr) continue
+      for (const i of px) grayBlob[i] = 1
+      anyGray = true
+    }
+    if (anyGray) {
+      // 닫힘 팽창 반경만큼 부풀려 제거(닫힘이 이어붙인 주변부까지)
+      const blobD = dilate(grayBlob, w, h, Math.max(1, Math.round(CLOSE_CM / cmPerPx)))
+      for (let i = 0; i < N; i++) if (blobD[i]) out[i] = 0
+    }
+  }
   return out
 }
 
