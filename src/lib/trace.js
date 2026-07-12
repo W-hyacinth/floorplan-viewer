@@ -46,7 +46,9 @@ const EDGE_INTERIOR_MIN = 0.25
 
 export async function detectWalls(src, underlay, debug = false) {
   const img = await loadImage(src)
-  const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight))
+  // 작은 이미지는 업스케일해 정규화 — 실전 저해상도 도면(px당 2~3cm)에서 병합·두께
+  // 문턱이 픽셀 단위로 뭉개지는 것을 막는다(보간이 선을 매끈하게 이어줘 띠가 안정됨)
+  const scale = MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight)
   const w = Math.max(1, Math.round(img.naturalWidth * scale))
   const h = Math.max(1, Math.round(img.naturalHeight * scale))
   const cv = document.createElement('canvas')
