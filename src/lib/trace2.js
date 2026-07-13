@@ -254,11 +254,11 @@ export async function detectWalls2(src, underlay, debug = false) {
   // 범위 밖 픽셀이 과반인 방을 외부(1)로 흡수 — 그 외벽 리지는 방-외부 단일쌍으로
   // 복원돼 전장이 이어진다.
   var bldgDbg = null
+  var bldgBoxes = [] // 인정된 도면 범위 박스들(질량 내림차순) — 다중 도면 시트는 2개+
+  var labelBox = new Map() // 방 라벨 → 소속 박스 idx (군집→도면 배정에 사용)
   {
     const compSeen = new Uint8Array(N)
-    const bigPx = 300 / cmPerPx
     const bigComps = []
-    let lx1 = 0, lx2 = w - 1, ly1 = 0, ly2 = h - 1, bestSize = 0, bestIdx = -1
     for (let s = 0; s < N; s++) {
       if (!wall[s] || compSeen[s]) continue
       stack.length = 0
@@ -282,48 +282,75 @@ export async function detectWalls2(src, underlay, debug = false) {
       if (!nStruct) continue // 치수선·보조선·여백 치수 숫자: 구조 픽셀 0 → 범위에 기여 못 함
       // 크기 하한 없음 — 새시 외벽 지대의 짧은 벽 스텁(기장 상단 77cm)도 연쇄로 이어져야
       // 한다. 여백 텍스트는 구조 픽셀 조건이, 떨어진 캡션·범례는 연쇄 접촉 조건이 거른다.
-      if (bestIdx < 0 || nStruct > bigComps[bestIdx][4]) bestIdx = bigComps.length
       bigComps.push([x1, y1, x2, y2, nStruct])
-      if (nStruct > bestSize) {
-        bestSize = nStruct
-        lx1 = x1; lx2 = x2; ly1 = y1; ly2 = y2
-      }
     }
-    let bx1 = lx1, bx2 = lx2, by1 = ly1, by2 = ly2
-    if (bestIdx >= 0) {
-      const pad = Math.round(25 / cmPerPx)
-      const used = new Uint8Array(bigComps.length)
-      used[bestIdx] = 1
-      ;[bx1, by1, bx2, by2] = bigComps[bestIdx]
+    // 다중 도면 시트 지원(18차): 건물 범위를 하나가 아니라 여러 개 만든다.
+    // nStruct 최대 성분을 씨앗으로 성장 박스를 완성(기존과 동일 규칙)한 뒤, 남은
+    // 성분에서 다시 씨앗을 뽑아 반복 — 첫 그룹은 기존 단일 범위와 동일하고, 떨어진
+    // 두 번째 도면(층/유닛)이 자기 그룹을 얻는다. 게이트: 그룹 구조 질량이 최대
+    // 그룹의 20% 이상만 도면으로 인정(실측: 진짜 2번째 층 83~94% vs CAD 캡션·LH
+    // 라벨띠 3%) — 캡션 그룹을 살리면 여백 치수띠 방·유령 벽이 되돌아온다.
+    const pad = Math.round(25 / cmPerPx)
+    const used = new Uint8Array(bigComps.length)
+    const extGroups = []
+    while (true) {
+      let seed = -1
+      for (let k = 0; k < bigComps.length; k++) {
+        if (!used[k] && (seed < 0 || bigComps[k][4] > bigComps[seed][4])) seed = k
+      }
+      if (seed < 0) break
+      used[seed] = 1
+      let [bx1, by1, bx2, by2, mass] = bigComps[seed]
       let grew = true
       while (grew) {
         grew = false
         for (let k = 0; k < bigComps.length; k++) {
           if (used[k]) continue
-          const [x1, y1, x2, y2] = bigComps[k]
+          const [x1, y1, x2, y2, m2] = bigComps[k]
           if (x1 > bx2 + pad || x2 < bx1 - pad || y1 > by2 + pad || y2 < by1 - pad) continue
           used[k] = 1
           grew = true
+          mass += m2
           if (x1 < bx1) bx1 = x1
           if (x2 > bx2) bx2 = x2
           if (y1 < by1) by1 = y1
           if (y2 > by2) by2 = y2
         }
       }
+      extGroups.push({ box: [bx1, by1, bx2, by2], mass })
     }
-    if (debug) bldgDbg = { box: [bx1, by1, bx2, by2], bigComps }
-    if (bestSize) {
-      const inPx = new Map(), totPx = new Map()
+    extGroups.sort((a, b) => b.mass - a.mass)
+    for (const g of extGroups) {
+      if (extGroups[0].mass && g.mass >= extGroups[0].mass * 0.2) bldgBoxes.push(g.box)
+    }
+    if (debug) bldgDbg = { boxes: bldgBoxes, groups: extGroups, bigComps }
+    if (bldgBoxes.length) {
+      const inPx = new Map(), totPx = new Map(), boxPx = new Map()
       for (let i = 0; i < N; i++) {
         const l = label[i]
         if (l < 2) continue
         totPx.set(l, (totPx.get(l) || 0) + 1)
         const x = i % w, y = (i / w) | 0
-        if (x >= bx1 && x <= bx2 && y >= by1 && y <= by2) inPx.set(l, (inPx.get(l) || 0) + 1)
+        for (let bi = 0; bi < bldgBoxes.length; bi++) {
+          const [x1, y1, x2, y2] = bldgBoxes[bi]
+          if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
+            inPx.set(l, (inPx.get(l) || 0) + 1)
+            let arr = boxPx.get(l)
+            if (!arr) boxPx.set(l, arr = new Array(bldgBoxes.length).fill(0))
+            arr[bi]++
+            break // 겹치면 질량 큰 박스 우선
+          }
+        }
       }
       const outside = new Set()
       for (const [l, tot] of totPx) if ((inPx.get(l) || 0) / tot < 0.5) outside.add(l)
       if (bldgDbg) bldgDbg.absorbed = [...outside].map(l => [l, totPx.get(l), inPx.get(l) || 0])
+      for (const [l, arr] of boxPx) {
+        if (outside.has(l)) continue
+        let bi = 0
+        for (let k = 1; k < arr.length; k++) if (arr[k] > arr[bi]) bi = k
+        labelBox.set(l, bi)
+      }
       if (outside.size) {
         let acc = 0
         for (let i = 0; i < N; i++) if (outside.has(label[i])) { label[i] = 1; acc++ }
@@ -608,7 +635,7 @@ export async function detectWalls2(src, underlay, debug = false) {
   }
   const roomLabels = [...compPx.keys()].filter(l => l >= 2)
   const seen = new Set()
-  let bestCluster = null
+  const clusters = []
   for (const r0 of roomLabels) {
     if (seen.has(r0)) continue
     const cl = new Set([r0])
@@ -621,10 +648,54 @@ export async function detectWalls2(src, underlay, debug = false) {
       }
     }
     const area = [...cl].reduce((s2, l) => s2 + (compPx.get(l) || 0), 0)
-    if (!bestCluster || area > bestCluster.area) bestCluster = { set: cl, area }
+    // 군집의 벽 리지 증거: 소속 방이 낀 벽 리지 픽셀 수 + 그중 실측 두께가
+    // 실벽(RIDGE_MIN_T 이상)인 비율 — 도면 군집과 배너·심볼 군집을 가른다.
+    let ridgePx = 0
+    let thickPx = 0
+    const minTpx2 = RIDGE_MIN_T_CM / cmPerPx
+    for (const [k, pxs] of wallR) {
+      const a = Math.floor(k / 100000), b = k % 100000
+      if (!(cl.has(a) || cl.has(b))) continue
+      ridgePx += pxs.length
+      for (const i of pxs) if (pxThickness(structural, w, h, i) >= minTpx2) thickPx++
+    }
+    clusters.push({ set: cl, area, rooms: cl.size, ridgePx, thickPx })
   }
-  if (!bestCluster) return []
-  const keep = bestCluster.set
+  if (!clusters.length) return []
+  clusters.sort((a, b) => b.area - a.area)
+  // 도면 범위 박스마다 지배(최대 면적) 군집 1개씩 유지 — 다중 도면 시트에서 두 번째
+  // 층/유닛의 군집을 살린다. 같은 박스의 비지배 군집(가구 그늘·배너 조각)은 기존처럼
+  // 버려진다. 박스 배정 = 구성 방들의 면적 가중 다수결(labelBox).
+  const boxOf = c => {
+    const tally = new Map()
+    for (const l of c.set) {
+      const bi = labelBox.get(l)
+      if (bi === undefined) continue
+      tally.set(bi, (tally.get(bi) || 0) + (compPx.get(l) || 0))
+    }
+    let best = -1, bestA = 0
+    for (const [bi, a] of tally) if (a > bestA) { best = bi; bestA = a }
+    return best
+  }
+  const keep = new Set(clusters[0].set)
+  const keptClusters = new Set([clusters[0]])
+  {
+    const bestPerBox = new Map()
+    for (const c of clusters) {
+      const bi = boxOf(c)
+      if (bi < 0) continue
+      if (!bestPerBox.has(bi)) bestPerBox.set(bi, c) // area 내림차순이라 첫 것이 지배 군집
+    }
+    for (const c of bestPerBox.values()) {
+      keptClusters.add(c)
+      for (const l of c.set) keep.add(l)
+    }
+  }
+  if (debug) var clusterLog = clusters.map(c => ({
+    rooms: c.rooms, areaM2: Math.round(c.area * cmPerPx * cmPerPx / 1e4 * 10) / 10,
+    ridgeCm: Math.round(c.ridgePx * cmPerPx), thickCm: Math.round(c.thickPx * cmPerPx),
+    box: boxOf(c), kept: keptClusters.has(c),
+  }))
 
   // ── 7) 리지 → 축정렬 벽 세그먼트 ──
   const walls = []
@@ -729,7 +800,7 @@ export async function detectWalls2(src, underlay, debug = false) {
     preMergePng,
     maskPng,
     stats: {
-      cmPerPx, rooms, keep: [...keep], segsDebug, pocketLog, mergeLog, bldgDbg, toneSplitLog, preGrid, postGrid: sampleGrid(label, w, h, 20),
+      cmPerPx, rooms, keep: [...keep], clusterLog, segsDebug, pocketLog, mergeLog, bldgDbg, toneSplitLog, preGrid, postGrid: sampleGrid(label, w, h, 20),
       wallPairs: [...wallR.entries()].map(([k, v]) => {
         const wallFrac = v.filter(i => wall[i]).length / v.length
         const ths = v.map(i => pxThickness(structural, w, h, i)).sort((q, r3) => q - r3)
