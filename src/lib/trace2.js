@@ -16,7 +16,9 @@
 
 const MAX_SIDE = 1200
 const MAX_CHROMA = 60
-const MIN_SEED_CM = 30       // 워터셰드 분지 씨앗 최소 거리(벽에서) — 이보다 얕은 극대점은 씨앗이 아니다
+const MIN_SEED_CM = 30       // 워터셰드 분지 씨앗 최소 거리(벽에서) — 이보다 얕은 극대점은 씨앗이 아니다.
+                             //   ⚠️45(문 반폭) 상향 실험(7/13): CAD 가구 소분지는 줄지만 실전
+                             //   좁은 방의 씨앗이 죽어 의정부 37→32 회귀 — 30 유지.
 const POCKET_MIN_M2 = 0.7    // 갇힌 영역 복원 최소 면적 — 욕실·팬트리(1.2~1.5㎡)가 씨앗을 잃는 경우
 const POCKET_MIN_DIM_CM = 55 // 포켓 최소 변 — 새시 이중선 사이 띠(20~30cm)는 방이 아니다
 const MIN_WALL_LEN_CM = 40
@@ -24,7 +26,10 @@ const MIN_T_CM = 6
 const MAX_T_CM = 60
 const CLOSE_CM = 5           // 닫힘 반경 — 새시 창(가는 이중선+살) 틈을 벽 띠로 봉합
 const SEAL_MIN_COMP_CM = 120 // 실링 참여 최소 성분 크기 — 글자·심볼·점선은 방을 가르면 안 된다
-const FURN_MIN_CM = 75       // 양방향 모두 이보다 두꺼운 블롭 = 가구 — 실링에서 제외
+const FURN_MIN_CM = 62       // 양방향 모두 이보다 두꺼운 블롭 = 가구 — 실링에서 제외.
+                             //   MAX_T(60)+2 여유: 벽은 정의상 60 이하 띠라 코어가 안 잘린다.
+                             //   75였을 때 CAD 식탁 원(지름 ~74)이 1cm 차로 살아남아 거실
+                             //   분지를 갈랐다(가구 위 유령 리지 t44의 뿌리).
 const MERGE_OPEN_CM = 110    // 문(≤90cm)보다 넓은 연속 열린 인터페이스 = 같은 방
 const MERGE_SADDLE_CM = 70   // + 경계 위 거리장 최대(=개구부 반폭)가 이 이상이어야 병합.
                              //   문(반폭≤45)과 문틈으로 샌 '혀' 경계는 벽에 붙어 D가 작아 차단되고,
@@ -333,6 +338,7 @@ export async function detectWalls2(src, underlay, debug = false) {
   // 리지를 만들 기회조차 없다. (벽 소유권이 정해진 뒤라 다수결이 가능.)
   {
     const seen0 = new Uint8Array(N)
+    const minTpx0 = RIDGE_MIN_T_CM / cmPerPx
     for (let s = 0; s < N; s++) {
       if (label[s] || wall[s] || seen0[s]) continue
       const px = []
@@ -349,15 +355,33 @@ export async function detectWalls2(src, underlay, debug = false) {
         if (y < h - 1 && !wall[i + w] && !label[i + w] && !seen0[i + w]) { seen0[i + w] = 1; stack.push(i + w) }
       }
       const votes = new Map()
+      const extT = [] // 외부(1) 이웃 벽 픽셀의 실측 띠 두께 — 새시(얇음) vs 실벽(두꺼움) 판별
       for (const i of px) {
         const x = i % w, y = (i / w) | 0
-        if (x > 0 && label[i - 1] >= 1) votes.set(label[i - 1], (votes.get(label[i - 1]) || 0) + 1)
-        if (x < w - 1 && label[i + 1] >= 1) votes.set(label[i + 1], (votes.get(label[i + 1]) || 0) + 1)
-        if (y > 0 && label[i - w] >= 1) votes.set(label[i - w], (votes.get(label[i - w]) || 0) + 1)
-        if (y < h - 1 && label[i + w] >= 1) votes.set(label[i + w], (votes.get(label[i + w]) || 0) + 1)
+        const cast = j => {
+          const l = label[j]
+          if (l < 1) return
+          votes.set(l, (votes.get(l) || 0) + 1)
+          if (l === 1 && wall[j]) extT.push(pxThickness(structural, w, h, j))
+        }
+        if (x > 0) cast(i - 1)
+        if (x < w - 1) cast(i + 1)
+        if (y > 0) cast(i - w)
+        if (y < h - 1) cast(i + w)
       }
+      // 흡수 방향이 벽의 생사를 가른다: ①붙박이장-외벽 사이 띠를 외부로 흡수하면 그
+      // 구간 외벽이 외부-외부가 되어 리지째 소실(CAD 우측 외벽) ②새시 이중선 사이 띠를
+      // 방으로 흡수하면 (방,외부) 쌍이 새시를 못 가로질러 창 승격이 죽는다(CAD 창 3개
+      // 소실 실측). 판별 = 외부 쪽 장벽의 실측 두께: 얇으면(<RIDGE_MIN_T) 새시 → 외부,
+      // 두꺼우면 실벽 → 방 우선. 실측: LH 의정부 37→40·기장 19→20(+전부 실벽), cad 창 유지.
+      extT.sort((q, r3) => q - r3)
+      const extThin = extT.length > 0 && extT[Math.floor(extT.length / 2)] < minTpx0
       let best = 0, bestN = 0
-      for (const [l, n2] of votes) if (n2 > bestN) { bestN = n2; best = l }
+      if (extThin && votes.has(1)) best = 1
+      else {
+        for (const [l, n2] of votes) if (l >= 2 && n2 > bestN) { bestN = n2; best = l }
+        if (!best && votes.has(1)) best = 1
+      }
       if (best >= 1) {
         for (const i of px) label[i] = best
         compPx.set(best, (compPx.get(best) || 0) + px.length)
@@ -410,6 +434,9 @@ export async function detectWalls2(src, underlay, debug = false) {
       // 붙어 있어 D가 작고(≤문 반폭), 진짜 열린 연결은 D가 크다.
       let maxSad = 0
       for (const i of pxs) if (D[i] > maxSad) maxSad = D[i]
+      // ⚠️방-방 안장 완화 실험 2건(7/13) 모두 효과 0으로 롤백: ①일률 52cm ②실벽 비율<5%
+      // 조건부 48cm. 가구(침대·카운터)로 갈린 소분지의 직접 경계는 가구 잉크 위라 D가
+      // 원리적으로 작고, 우회 통로는 제3 분지 경유(다중 홉)라 쌍 단위 병합이 못 본다.
       if (maxSad * cmPerPx < MERGE_SADDLE_CM) continue
       const ra = find(a), rb = find(b)
       if (ra !== rb) {
