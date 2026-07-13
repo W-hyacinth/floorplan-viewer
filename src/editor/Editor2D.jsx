@@ -3,7 +3,8 @@ import { buildColliders, obbOverlapsObb, obbIntersectsSegment } from '../lib/col
 import { CM, deg } from '../lib/units.js'
 import { detectEnclosedArea } from '../lib/area.js'
 import { zonePoints, zoneCentroid } from '../lib/zone.js'
-import { detectWalls, autoCalibrateWidth } from '../lib/trace.js'
+import { autoCalibrateWidth } from '../lib/trace.js'
+import { detectWallsAuto } from '../lib/combine.js'
 
 // 2D 탑뷰 도면 에디터. 도면 좌표(cm, +z=아래)가 SVG 좌표와 1:1 — 변환 없음.
 const SNAP = 5 // cm
@@ -381,16 +382,17 @@ export function Editor2D({ buildingName, levels, activeLevel, levelsApi, scene, 
     setTracing(true)
     setTraceInfo(null)
     try {
-      const walls = await detectWalls(scene.underlay.src, scene.underlay)
+      const { walls, engine } = await detectWallsAuto(scene.underlay.src, scene.underlay)
       if (!walls.length) {
         setTraceInfo('벽을 찾지 못했어요 — 실제 폭(cm) 보정과 도면 대비를 확인하세요')
       } else {
         sceneApi.setWalls(walls)
         setSelected(null)
         const glz = walls.reduce((s2, w2) => s2 + (w2.openings?.length ?? 0), 0)
+        const eng = engine === 'v2' ? ' · 공간 인식 엔진 사용' : ''
         setTraceInfo(walls.length < 8
-          ? `벽 ${walls.length}개 인식 — 벽이 적게 잡히면 실제 폭(cm) 보정이 정확한지 먼저 확인하세요 (보정이 작으면 얇은 내벽이 걸러집니다)`
-          : `벽 ${walls.length}개 인식${glz ? ` · 창/유리 ${glz}곳` : ''} — 잘못 잡힌 벽은 클릭해서 삭제하세요`)
+          ? `벽 ${walls.length}개 인식${eng} — 벽이 적게 잡히면 실제 폭(cm) 보정이 정확한지 먼저 확인하세요 (보정이 작으면 얇은 내벽이 걸러집니다)`
+          : `벽 ${walls.length}개 인식${glz ? ` · 창/유리 ${glz}곳` : ''}${eng} — 잘못 잡힌 벽은 클릭해서 삭제하세요`)
       }
     } catch (err) {
       setTraceInfo(`인식 실패: ${err.message}`)
