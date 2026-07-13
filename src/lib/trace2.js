@@ -460,6 +460,135 @@ export async function detectWalls2(src, underlay, debug = false) {
     ;({ wallR, floorR } = extractRidges(label, structural, w, h))
   }
 
+  // ── 5c) 톤 이질성 분할 ──
+  // 밝은 새시(이진화 불가시) 개구부가 방 깊이보다 넓으면 거리장에 안장이 없어 워터셰드가
+  // 분지를 통째로 포획한다(LH 기장 침실1(마루 211)-발코니(타일 168)). 병합 레벨 처방
+  // 불가 — 라벨 안에서 바닥 톤이 두 큰 덩어리로 갈리면 다른 방이므로 분할한다.
+  // 가드: ①두 군집 중심 차 ≥12%Δ ②소수 군집 ≥15%·주성분 응집 ≥60%·면적 ≥POCKET_MIN
+  // ③둘러싸임 검사 — 소수 주성분 경계의 다수 군집 비율 >55%면 방 안에 뜬 가구
+  // 블롭(1a' 재분류 침대·회색 소파)이므로 분할 금지. 진짜 딴 방(발코니)은 벽·외부와
+  // 접해 다수 군집과는 한 면만 닿는다.
+  {
+    const splitLog = []
+    const labels0 = [...compPx.keys()].filter(l => l >= 2)
+    let splitAny = false
+    for (const l of labels0) {
+      // 표본 수집(바닥 픽셀, 스트라이드 2)
+      const idxs = []
+      for (let i = 0; i < N; i += 2) if (label[i] === l && !wall[i]) idxs.push(i)
+      if (idxs.length < 400) continue
+      // 1차원 2-means
+      let c1 = Infinity, c2 = -Infinity
+      for (const i of idxs) { const t2 = tone[i]; if (t2 < c1) c1 = t2; if (t2 > c2) c2 = t2 }
+      if (c2 - c1 < 0.12 * (hi - lo)) { if (debug) splitLog.push({ l, gate: 'range', d: Math.round(c2 - c1) }); continue }
+      for (let it = 0; it < 12; it++) {
+        let s1 = 0, n1 = 0, s2 = 0, n2 = 0
+        const mid = (c1 + c2) / 2
+        for (const i of idxs) {
+          if (tone[i] < mid) { s1 += tone[i]; n1++ } else { s2 += tone[i]; n2++ }
+        }
+        if (!n1 || !n2) { c1 = c2; break }
+        const nc1 = s1 / n1, nc2 = s2 / n2
+        if (Math.abs(nc1 - c1) < 0.5 && Math.abs(nc2 - c2) < 0.5) { c1 = nc1; c2 = nc2; break }
+        c1 = nc1; c2 = nc2
+      }
+      if (c2 - c1 < 0.12 * (hi - lo)) { if (debug) splitLog.push({ l, gate: 'kmeans-delta', c1: Math.round(c1), c2: Math.round(c2) }); continue }
+      const mid = (c1 + c2) / 2
+      let nLow = 0
+      for (const i of idxs) if (tone[i] < mid) nLow++
+      const minorLow = nLow <= idxs.length - nLow
+      const minorN = minorLow ? nLow : idxs.length - nLow
+      if (minorN / idxs.length < 0.15) { if (debug) splitLog.push({ l, gate: 'minor-frac', frac: Math.round(minorN / idxs.length * 100) }); continue }
+      // 소수 군집의 공간 성분들 — 발코니+실외기실처럼 소수가 여러 방으로 갈릴 수 있어
+      // 포켓 크기 이상 성분 각각을 후보로 삼는다. 성분 스캔은 소수 마스크를 3cm 팽창한
+      // 마스크에서 한다: 타일 줄눈(1~2px 잉크)이 타일 방을 세포 단위로 조각내 어떤
+      // 세포도 포켓 크기를 못 넘던 것(기장 발코니 0.85m² 조각 분리에 그친 원인)을 다리
+      // 놓는다. 재라벨도 팽창 성분 안의 라벨-l 바닥 픽셀 전체로 — 경계 JPEG 스미어가
+      // 옛 라벨 섬으로 남아 방 한가운데 junk 경계를 만들지 않게.
+      const minorRaw = new Uint8Array(N)
+      let minorTotal = 0
+      for (let i = 0; i < N; i++) {
+        if (label[i] === l && !wall[i] && ((tone[i] < mid) === minorLow)) {
+          minorRaw[i] = 1
+          minorTotal++
+        }
+      }
+      const rB = Math.max(1, Math.round(3 / cmPerPx))
+      const minorDil = dilate(minorRaw, w, h, rB)
+      const inScan = i => minorDil[i] && label[i] === l && !wall[i]
+      const seenS = new Uint8Array(N)
+      const comps = []
+      for (let s0 = 0; s0 < N; s0++) {
+        if (!inScan(s0) || seenS[s0]) continue
+        const comp = []
+        const st = [s0]
+        seenS[s0] = 1
+        while (st.length) {
+          const i = st.pop()
+          comp.push(i)
+          const x = i % w, y = (i / w) | 0
+          if (x > 0 && inScan(i - 1) && !seenS[i - 1]) { seenS[i - 1] = 1; st.push(i - 1) }
+          if (x < w - 1 && inScan(i + 1) && !seenS[i + 1]) { seenS[i + 1] = 1; st.push(i + 1) }
+          if (y > 0 && inScan(i - w) && !seenS[i - w]) { seenS[i - w] = 1; st.push(i - w) }
+          if (y < h - 1 && inScan(i + w) && !seenS[i + w]) { seenS[i + w] = 1; st.push(i + w) }
+        }
+        comps.push(comp)
+      }
+      const minPocketPx2 = POCKET_MIN_M2 * 1e4 / (cmPerPx * cmPerPx)
+      const bigComps2 = comps.filter(c => c.length >= minPocketPx2)
+      if (!bigComps2.length) { if (debug) splitLog.push({ l, gate: 'no-big-comp', comps: comps.length, biggest: comps.length ? Math.max(...comps.map(c => c.length)) : 0 }); continue }
+      // (전역 산포 게이트는 폐기 — 마루 널 어두운 선·글자 안티앨리어싱이 소수 톤에 섞여
+      //  산포를 키운다(기장 label7 응집 42%). 성분별 게이트(포켓 크기·둘러싸임·띠 두께)로 거른다)
+      let splitHere = false
+      for (const comp of bigComps2) {
+        // 둘러싸임: 성분 경계 이웃 중 같은 라벨 다수 군집 비율 >55% = 방 안에 뜬 가구 블롭
+        let bMaj = 0, bOther = 0
+        const inMain = new Set(comp)
+        for (const i of comp) {
+          const x = i % w, y = (i / w) | 0
+          const chk = j => {
+            if (inMain.has(j)) return
+            if (label[j] === l && !wall[j] && ((tone[j] < mid) !== minorLow)) bMaj++
+            else bOther++
+          }
+          if (x > 0) chk(i - 1)
+          if (x < w - 1) chk(i + 1)
+          if (y > 0) chk(i - w)
+          if (y < h - 1) chk(i + w)
+        }
+        if (bMaj / Math.max(1, bMaj + bOther) > 0.55) { if (debug) splitLog.push({ l, gate: 'enclosed', frac: Math.round(bMaj / (bMaj + bOther) * 100), px: comp.length }); continue } // 가구 블롭
+        // 그림자·비네팅 띠 배제: bbox 최소변 45cm 미만이면 방이 아니라 벽따라 낀 띠.
+        // (면적/둘레 프록시는 타일 줄눈이 내부 구멍을 만들어 둘레를 부풀리는 바람에
+        //  발코니 조각을 오판했다 — bbox가 강건)
+        let cx1 = w, cx2 = 0, cy1 = h, cy2 = 0
+        for (const i of comp) {
+          const x = i % w, y = (i / w) | 0
+          if (x < cx1) cx1 = x
+          if (x > cx2) cx2 = x
+          if (y < cy1) cy1 = y
+          if (y > cy2) cy2 = y
+        }
+        if ((Math.min(cx2 - cx1, cy2 - cy1) + 1) * cmPerPx < 45) { if (debug) splitLog.push({ l, gate: 'thin-band', px: comp.length }); continue }
+        const newL = nextLabel++
+        for (const i of comp) label[i] = newL
+        compPx.set(newL, comp.length)
+        compPx.set(l, Math.max(0, (compPx.get(l) || 0) - comp.length))
+        splitHere = true
+        if (debug) splitLog.push({ l, newL, c1: Math.round(c1), c2: Math.round(c2), px: comp.length, minorLow })
+      }
+      if (splitHere) {
+        // 벽 소유권 재배정: 이 라벨이 갖던 벽 픽셀을 반납하고 재확장
+        for (let i = 0; i < N; i++) if (label[i] === l && wall[i]) label[i] = 0
+        splitAny = true
+      }
+    }
+    if (splitAny) {
+      bfsExpand(label, wall, w, h, true)
+      ;({ wallR, floorR } = extractRidges(label, structural, w, h))
+    }
+    var toneSplitLog = splitLog
+  }
+
   // ── 6) 최대 방 군집 선택 (배너·카탈로그 시트: 본 도면만) ──
   // 방 인접 그래프(벽 또는 문(바닥) 리지 공유 = 인접, 외부(1) 제외) → 총면적 최대 군집
   const adj = new Map()
@@ -596,7 +725,7 @@ export async function detectWalls2(src, underlay, debug = false) {
     preMergePng,
     maskPng,
     stats: {
-      cmPerPx, rooms, keep: [...keep], segsDebug, pocketLog, mergeLog, bldgDbg, preGrid, postGrid: sampleGrid(label, w, h, 20),
+      cmPerPx, rooms, keep: [...keep], segsDebug, pocketLog, mergeLog, bldgDbg, toneSplitLog, preGrid, postGrid: sampleGrid(label, w, h, 20),
       wallPairs: [...wallR.entries()].map(([k, v]) => {
         const wallFrac = v.filter(i => wall[i]).length / v.length
         const ths = v.map(i => pxThickness(structural, w, h, i)).sort((q, r3) => q - r3)
