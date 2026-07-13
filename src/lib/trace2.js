@@ -423,6 +423,12 @@ export async function detectWalls2(src, underlay, debug = false) {
         arr.push(i)
       }
     }
+    // ⚠️병합 톤 거부권(라벨별 바닥 톤 중앙값 Δ>12%면 병합 금지) 실험(7/13) 효과 0으로
+    // 롤백: LH 기장 침실1-발코니 소실의 진짜 원인은 병합이 아니라 **워터셰드 분지 포획**
+    // — 밝은 새시(이진화 불가시) 개구부(190cm)가 발코니 깊이(110cm)보다 넓으면 거리장에
+    // 안장이 원리적으로 없어, 발코니가 씨앗(D~47)을 얻기 전에 침실1 홍수가 개구부를
+    // 통과해 극대점을 선점한다. 근본 처방=톤 경계(마루 211/타일 168, Δ17%) 기반 국소
+    // 장벽 또는 라벨 톤 이질성 분할(적응형 세그먼테이션 로드맵).
     for (const [k, pxs] of openByPair) {
       const a = Math.floor(k / 100000), b = k % 100000
       // 방-방뿐 아니라 방-외부(1) 병합도 허용: 치수선에 둘러싸인 여백 분지가
@@ -742,6 +748,39 @@ function structuralMask(wall, raw, lum, lo, hi, w, h, cmPerPx) {
     }
     runs.sort((q, r3) => q - r3)
     if (runs[(runs.length / 2) | 0] < minThick) continue // 점선·문 호선 등 선형 심볼
+    // 텍스트 블록 게이트: 방 이름·치수 문자열("3000×3600")은 닫힘이 글리프들을 솔리드
+    // 띠로 봉합해 형태 통계(런 중앙값·종횡비)로는 벽과 구분 불가(실측: 닫힘 후 156×20
+    // 완전 띠). raw 레벨 시그니처로 판별 — 텍스트=rawFill 0.36~0.46·글리프 11~12개,
+    // 벽 조각=fill 0.93+·글리프 1~2, 새시 평행선=글리프 2~3(안전). 네트워크(>400cm)는
+    // 검사 제외(CAD 해칭 벽이 fill 낮음). bunyang 유령 벽 4곳·LH 글자 junk의 뿌리.
+    // 최소변 ≤45cm: 텍스트 줄 높이(17~40cm)만 노리고 주방 카운터(깊이 60cm) 같은
+    // 가구 심볼 클러스터는 보호(카운터 오제외 → interior 주방 junk t37 실측 회귀).
+    if (maxDim >= minSide && maxDim <= 400 / cmPerPx && (Math.min(x2 - x1, y2 - y1) + 1) * cmPerPx <= 45) {
+      let nRaw = 0
+      for (const i of px) if (raw[i]) nRaw++
+      if (nRaw / px.length < 0.5) {
+        const seenG = new Set()
+        let glyphs = 0
+        const gstack = []
+        for (const s2 of px) {
+          if (!raw[s2] || seenG.has(s2)) continue
+          glyphs++
+          if (glyphs >= 4) break
+          gstack.length = 0
+          gstack.push(s2)
+          seenG.add(s2)
+          while (gstack.length) {
+            const i = gstack.pop()
+            const x = i % w, y = (i / w) | 0
+            if (x > 0 && raw[i - 1] && !seenG.has(i - 1)) { seenG.add(i - 1); gstack.push(i - 1) }
+            if (x < w - 1 && raw[i + 1] && !seenG.has(i + 1)) { seenG.add(i + 1); gstack.push(i + 1) }
+            if (y > 0 && raw[i - w] && !seenG.has(i - w)) { seenG.add(i - w); gstack.push(i - w) }
+            if (y < h - 1 && raw[i + w] && !seenG.has(i + w)) { seenG.add(i + w); gstack.push(i + w) }
+          }
+        }
+        if (glyphs >= 4) continue // 텍스트/다중 심볼 블록
+      }
+    }
     if (maxDim >= minSide) for (const i of px) out[i] = 1
     else smallThick.push(px) // 크기 미달이지만 띠 두께는 있는 조각 — 근접 구제 후보
   }
