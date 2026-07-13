@@ -79,6 +79,10 @@ export async function detectWalls2(src, underlay, debug = false) {
     tone = new Float32Array(N)
     for (let i = 0; i < N; i++) tone[i] = lo + hi - lum[i]
   }
+  // ⚠️밝은 새시 창 승격 실험(7/13) 기각: 흰 새시(기장 침실1-발코니)는 JPEG 열화로
+  // 밝은 세선 시그니처가 표본 컬럼 15개 중 3개에만 잔존(문턱 235에서 존 밝은 픽셀 5%,
+  // 마루 텍스처 상한 222와 분리 불가) — 신호가 물리적으로 부족. 벽 회수는 톤 분할(5c)이
+  // 담당하고 창 승격은 포기(brightMask+windowStrip 70퍼센타일 폴백 롤백).
 
   // ── 1a') 두꺼운 암부 내부 = 바닥 재분류 ──
   // 벽은 두께 MAX_T_CM 이하의 띠다. 양방향 모두 FURN_MIN_CM보다 두꺼운 어두운 영역
@@ -1175,7 +1179,7 @@ function fitSegments(pxs, w) {
 // 창(새시) 시그니처: 세그먼트 표본점들의 수직 프로파일(±32cm)에서 가는 잉크 선
 // (두께 ≤8cm) 개수를 센다. 중앙값 ≥2면 창 — 반환값은 선들이 걸친 스팬(px, =창틀 폭).
 // 두꺼운 잉크 런이 걸리면 그 표본은 실격(-99) — 벽·가구 옆 오탐 방지.
-function windowStrip(raw, w, h, s, cmPerPx) {
+function windowStrip(raw, w, h, s, cmPerPx, pctl = 0.3) {
   const half = Math.round(32 / cmPerPx)
   const maxLineT = Math.max(2, Math.round(8 / cmPerPx))
   const n = Math.min(15, s.len)
@@ -1204,9 +1208,11 @@ function windowStrip(raw, w, h, s, cmPerPx) {
     spans.push(last >= first ? last - first + 1 : 0)
   }
   counts.sort((q, r3) => q - r3)
-  // 30퍼센타일 — 새시는 연속선이라 표본 대부분이 2줄을 보지만, 확장 점선 쌍(듀티 ~60%)은
-  // 표본의 40%가 빈 구간에 떨어져 탈락한다(중앙값이면 점선 쌍이 창으로 오승격 — 실측 결함)
-  if (counts[(counts.length * 0.3) | 0] < 2) return 0
+  // 기본 30퍼센타일 — 새시는 연속선이라 표본 대부분이 2줄을 보지만, 확장 점선 쌍(듀티
+  // ~60%)은 표본의 40%가 빈 구간에 떨어져 탈락한다(중앙값이면 점선 쌍이 창으로 오승격).
+  // 밝은 마스크 폴백은 JPEG 블러로 컬럼 1/3만 선명(기장 실측)이라 호출부가 50%를 준다
+  // — 점선은 어두운 잉크라 밝은 마스크에 아예 없어 완화해도 안전.
+  if (counts[(counts.length * pctl) | 0] < 2) return 0
   spans.sort((q, r3) => q - r3)
   return spans[(spans.length / 2) | 0]
 }
