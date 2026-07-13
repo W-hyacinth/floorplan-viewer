@@ -66,6 +66,14 @@ export async function detectWalls2(src, underlay, debug = false) {
     const c = Math.max(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]) - Math.min(data[i * 4], data[i * 4 + 1], data[i * 4 + 2])
     if (c <= MAX_CHROMA) raw[i] = 1
   }
+  // 극성 정규화 밝기: 톤 게이트들("잉크보다 밝다=가구/타일")은 잉크≈lo를 전제한다.
+  // 청사진(밝은 벽)에서는 lo+hi 기준 반사로 잉크를 lo 쪽에 정렬 — 안 하면 벽 네트워크
+  // 전체가 '밝은 블롭'으로 지워져 구조 마스크가 전멸한다(픽스처 blue 0벽의 원인).
+  let tone = lum
+  if (!darkIsWall) {
+    tone = new Float32Array(N)
+    for (let i = 0; i < N; i++) tone[i] = lo + hi - lum[i]
+  }
 
   // ── 1a') 두꺼운 암부 내부 = 바닥 재분류 ──
   // 벽은 두께 MAX_T_CM 이하의 띠다. 양방향 모두 FURN_MIN_CM보다 두꺼운 어두운 영역
@@ -80,9 +88,9 @@ export async function detectWalls2(src, underlay, debug = false) {
   // 50cm 이상 두꺼운 영역(타일 바닥·회색 가구)을 바닥으로 재분류 — 위생기구가
   // 타일 방을 75cm 미만 조각으로 쪼개도 잡힌다. CAD 해칭 벽 띠(~20cm)는 안전.
   {
-    const grayThr2 = lo + 0.15 * (hi - lo) // 어두운 타일도 잉크보다는 밝다(잉크≈lo)
+    const grayThr2 = lo + 0.15 * (hi - lo) // 어두운 타일도 잉크보다는 밝다(잉크≈lo, 극성 정규화 tone 기준)
     const midGray = new Uint8Array(N)
-    for (let i = 0; i < N; i++) if (raw[i] && lum[i] > grayThr2) midGray[i] = 1
+    for (let i = 0; i < N; i++) if (raw[i] && tone[i] > grayThr2) midGray[i] = 1
     const rG = Math.max(1, Math.round(25 / cmPerPx))
     const grayCore = dilate(erode(midGray, w, h, rG), w, h, rG)
     for (let i = 0; i < N; i++) if (grayCore[i]) raw[i] = 0
@@ -103,7 +111,7 @@ export async function detectWalls2(src, underlay, debug = false) {
   // 씨앗이 통째로 지워진다(주방이 제 라벨 글자에 지워진 진단 결함).
   // 가구 판정은 닫힘 이전(raw)에서 한다 — 닫힘이 벽에 붙은 가구를 벽 띠와 한 덩어리로
   // 만들면 열림이 그 벽 구간까지 가구로 도려내 봉인 구멍이 생긴다(진단된 결함).
-  const structural = structuralMask(closed, raw, lum, lo, hi, w, h, cmPerPx)
+  const structural = structuralMask(closed, raw, tone, lo, hi, w, h, cmPerPx)
 
   // ── 2·3) 거리변환 워터셰드: 방 = 거리 지형의 분지, 문/개구부 = 안장 ──
   // (고정 반경 봉인의 두 결함 대체: ①작은 방은 봉인 침식에 씨앗이 소멸 ②이진화가 놓친
@@ -219,6 +227,100 @@ export async function detectWalls2(src, underlay, debug = false) {
     if (lb >= 1) {
       for (const i of px) label[i] = lb
       compPx.set(lb, (compPx.get(lb) || 0) + px.length)
+    }
+  }
+
+  // ── 3c) 건물 범위 밖 분지 = 외부 ──
+  // 여백 치수 스트립은 얇은 치수선(비구조)에 갇혀 방으로 살아남는다. 그러면 외벽
+  // 리지가 방-스트립 쌍이 되어 틱 마크 단위로 조각나고(CAD 우측 외벽 3토막의 원인),
+  // 치수선 위에 유령 벽 리지도 생긴다. 스트립은 좁아 안장(D)이 작으므로 열린 경계
+  // 병합으로는 못 삼킨다. 건물 범위 = 구조 픽셀을 품은 닫힘(wall) 성분 중 최대에서
+  // 시작해 bbox가 맞닿는(25cm 패드) 대형 성분(최장변 ≥300cm)을 연쇄 편입한 합집합 bbox.
+  // ⚠️세 번의 실측 교훈: ①최대 성분 하나만 쓰면 실전(LH 의정부)처럼 벽 네트워크가
+  // 조각날 때 건물 일부만 덮어 진짜 방들이 외부로 흡수된다(37→26벽 회귀) ②무조건
+  // 합집합은 여백의 굵은 표제 캡션(CAD 하단 394cm 텍스트띠)까지 편입한다 → 연쇄 편입
+  // ③구조 마스크 성분만 쓰면 새시 외벽(가는 선=비구조, LH 기장)이 범위 밖이 되어
+  // 발코니 지대 방·벽이 흡수된다 → 닫힘 성분으로 스캔하되 구조 픽셀 0인 성분(치수선·
+  // 보조선)은 제외: 새시는 닫힘으로 벽 네트워크와 한 성분이라 범위가 새시 지대까지 확장.
+  // 범위 밖 픽셀이 과반인 방을 외부(1)로 흡수 — 그 외벽 리지는 방-외부 단일쌍으로
+  // 복원돼 전장이 이어진다.
+  var bldgDbg = null
+  {
+    const compSeen = new Uint8Array(N)
+    const bigPx = 300 / cmPerPx
+    const bigComps = []
+    let lx1 = 0, lx2 = w - 1, ly1 = 0, ly2 = h - 1, bestSize = 0, bestIdx = -1
+    for (let s = 0; s < N; s++) {
+      if (!wall[s] || compSeen[s]) continue
+      stack.length = 0
+      stack.push(s)
+      compSeen[s] = 1
+      let n2 = 0, nStruct = 0, x1 = w, x2 = 0, y1 = h, y2 = 0
+      while (stack.length) {
+        const i = stack.pop()
+        n2++
+        if (structural[i]) nStruct++
+        const x = i % w, y = (i / w) | 0
+        if (x < x1) x1 = x
+        if (x > x2) x2 = x
+        if (y < y1) y1 = y
+        if (y > y2) y2 = y
+        if (x > 0 && wall[i - 1] && !compSeen[i - 1]) { compSeen[i - 1] = 1; stack.push(i - 1) }
+        if (x < w - 1 && wall[i + 1] && !compSeen[i + 1]) { compSeen[i + 1] = 1; stack.push(i + 1) }
+        if (y > 0 && wall[i - w] && !compSeen[i - w]) { compSeen[i - w] = 1; stack.push(i - w) }
+        if (y < h - 1 && wall[i + w] && !compSeen[i + w]) { compSeen[i + w] = 1; stack.push(i + w) }
+      }
+      if (!nStruct) continue // 치수선·보조선·여백 치수 숫자: 구조 픽셀 0 → 범위에 기여 못 함
+      // 크기 하한 없음 — 새시 외벽 지대의 짧은 벽 스텁(기장 상단 77cm)도 연쇄로 이어져야
+      // 한다. 여백 텍스트는 구조 픽셀 조건이, 떨어진 캡션·범례는 연쇄 접촉 조건이 거른다.
+      if (bestIdx < 0 || nStruct > bigComps[bestIdx][4]) bestIdx = bigComps.length
+      bigComps.push([x1, y1, x2, y2, nStruct])
+      if (nStruct > bestSize) {
+        bestSize = nStruct
+        lx1 = x1; lx2 = x2; ly1 = y1; ly2 = y2
+      }
+    }
+    let bx1 = lx1, bx2 = lx2, by1 = ly1, by2 = ly2
+    if (bestIdx >= 0) {
+      const pad = Math.round(25 / cmPerPx)
+      const used = new Uint8Array(bigComps.length)
+      used[bestIdx] = 1
+      ;[bx1, by1, bx2, by2] = bigComps[bestIdx]
+      let grew = true
+      while (grew) {
+        grew = false
+        for (let k = 0; k < bigComps.length; k++) {
+          if (used[k]) continue
+          const [x1, y1, x2, y2] = bigComps[k]
+          if (x1 > bx2 + pad || x2 < bx1 - pad || y1 > by2 + pad || y2 < by1 - pad) continue
+          used[k] = 1
+          grew = true
+          if (x1 < bx1) bx1 = x1
+          if (x2 > bx2) bx2 = x2
+          if (y1 < by1) by1 = y1
+          if (y2 > by2) by2 = y2
+        }
+      }
+    }
+    if (debug) bldgDbg = { box: [bx1, by1, bx2, by2], bigComps }
+    if (bestSize) {
+      const inPx = new Map(), totPx = new Map()
+      for (let i = 0; i < N; i++) {
+        const l = label[i]
+        if (l < 2) continue
+        totPx.set(l, (totPx.get(l) || 0) + 1)
+        const x = i % w, y = (i / w) | 0
+        if (x >= bx1 && x <= bx2 && y >= by1 && y <= by2) inPx.set(l, (inPx.get(l) || 0) + 1)
+      }
+      const outside = new Set()
+      for (const [l, tot] of totPx) if ((inPx.get(l) || 0) / tot < 0.5) outside.add(l)
+      if (bldgDbg) bldgDbg.absorbed = [...outside].map(l => [l, totPx.get(l), inPx.get(l) || 0])
+      if (outside.size) {
+        let acc = 0
+        for (let i = 0; i < N; i++) if (outside.has(label[i])) { label[i] = 1; acc++ }
+        for (const l of outside) compPx.delete(l)
+        compPx.set(1, (compPx.get(1) || 0) + acc)
+      }
     }
   }
 
@@ -461,7 +563,7 @@ export async function detectWalls2(src, underlay, debug = false) {
     preMergePng,
     maskPng,
     stats: {
-      cmPerPx, rooms, keep: [...keep], segsDebug, pocketLog, mergeLog, preGrid, postGrid: sampleGrid(label, w, h, 20),
+      cmPerPx, rooms, keep: [...keep], segsDebug, pocketLog, mergeLog, bldgDbg, preGrid, postGrid: sampleGrid(label, w, h, 20),
       wallPairs: [...wallR.entries()].map(([k, v]) => {
         const wallFrac = v.filter(i => wall[i]).length / v.length
         const ths = v.map(i => pxThickness(structural, w, h, i)).sort((q, r3) => q - r3)
